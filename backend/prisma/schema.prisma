@@ -1,0 +1,62 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+
+enum Role {
+  STUDENT
+  TENANT
+}
+
+enum OrderStatus {
+  PENDING
+  COOKING
+  READY
+  DONE
+}
+
+model User {
+  id       Int     @id @default(autoincrement())
+  name     String
+  email    String  @unique
+  password String
+  role     Role    @default(STUDENT)
+  balance  Float   @default(100000) // Default Rp 100.000 untuk simulasi pre-order
+  orders   Order[]
+}
+
+model Tenant {
+  id       Int     @id @default(autoincrement())
+  name     String
+  location String
+  isOpen   Boolean @default(true)
+  menus    Menu[]
+  orders   Order[]
+}
+
+model Menu {
+  id            Int     @id @default(autoincrement())
+  name          String
+  price         Float
+  estimatedTime Int     // Durasi masak dalam menit (FR Estimasi Waktu)
+  isAvailable   Boolean @default(true)
+  tenantId      Int
+  tenant        Tenant  @relation(fields: [tenantId], references: [id])
+}
+
+model Order {
+  id         Int         @id @default(autoincrement())
+  userId     Int
+  tenantId   Int
+  totalPrice Float
+  status     OrderStatus @default(PENDING)
+  createdAt  DateTime    @default(now())
+  user       User        @relation(fields: [userId], references: [id])
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  items      Json        // Menyimpan array detail menu [{menuId, name, qty}]
+}
