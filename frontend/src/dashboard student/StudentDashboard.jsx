@@ -1,21 +1,39 @@
-import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Search, Wallet, ChevronLeft, MapPin, Star, ShoppingBag, X, ChefHat, Clock } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const StudentDashboard = () => {
-  const navigate = useNavigate();
   
   // State Utama Aplikasi
   const [saldo, setSaldo] = useState(75000);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [cart, setCart] = useState({});
   const [activeOrder, setActiveOrder] = useState(null);
+  
+  // Simulasi Perubahan Status Order
+  useEffect(() => {
+    if (!activeOrder) return;
+    if (activeOrder.status === "Pending") {
+      const timer = setTimeout(() => {
+        setActiveOrder((prev) => ({ ...prev, status: "Cooking" }));
+      }, 5000); // 5 detik ke dimasak
+      return () => clearTimeout(timer);
+    } else if (activeOrder.status === "Cooking") {
+      const timer = setTimeout(() => {
+        setActiveOrder((prev) => ({ ...prev, status: "Ready" }));
+      }, 7000); // 7 detik ke siap diambil
+      return () => clearTimeout(timer);
+    }
+  }, [activeOrder]);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("Semua");
+  const [showMobileCart, setShowMobileCart] = useState(false);
 
   // Kategori Populer ala GoFood
   const categories = ["Semua", "Makanan Berat", "Minuman / Coffee", "Camilan", "Sehat"];
 
-  // DATA MASTER RESTORAN & KALOG MENU (FR 3)
+  // DATA MASTER RESTORAN & KALOG MENU
   const tenants = [
     {
       id: 1,
@@ -59,7 +77,6 @@ const StudentDashboard = () => {
 
   const allGlobalMenus = tenants.flatMap(t => t.menus);
 
-  // Logika Filter Pencarian & Kategori ala GoFood
   const filteredTenants = tenants.filter(t => {
     const matchesSearch = t.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = selectedCategory === "Semua" || t.category === selectedCategory;
@@ -84,6 +101,8 @@ const StudentDashboard = () => {
     return sum + (item ? item.price * cart[id] : 0);
   }, 0);
 
+  const totalItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+
   const handleCheckout = () => {
     if (totalBelanja === 0) return;
     if (saldo < totalBelanja) {
@@ -104,89 +123,233 @@ const StudentDashboard = () => {
     });
 
     setCart({});
-    alert("🎉 Pembayaran Sukses! Merchant GoFood-BeeFood sedang menyiapkan hidangan Anda.");
+    setShowMobileCart(false);
+    alert("🎉 Pembayaran Sukses! Merchant sedang menyiapkan hidangan Anda.");
   };
 
+  const renderCartContent = () => (
+    <>
+      <h3 className="font-black text-gray-800 text-lg border-b border-gray-100 pb-4 flex items-center gap-2">
+        <ShoppingBag className="w-5 h-5 text-orange-500" /> Basket Pre-Order
+      </h3>
+      
+      {Object.keys(cart).length === 0 ? (
+        <div className="text-center py-12 flex flex-col items-center justify-center">
+          <div className="w-20 h-20 bg-orange-50 rounded-full flex items-center justify-center mb-4">
+             <ShoppingBag className="w-10 h-10 text-orange-200" />
+          </div>
+          <p className="text-sm text-gray-400 font-medium">Belum ada item di keranjang.</p>
+        </div>
+      ) : (
+        <div className="space-y-4 max-h-[40vh] md:max-h-[50vh] overflow-y-auto pr-2 mt-4 custom-scrollbar">
+          {Object.keys(cart).map((id) => {
+            const matchedMenu = allGlobalMenus.find((m) => m.id === parseInt(id));
+            if (!matchedMenu) return null;
+            return (
+              <div key={id} className="flex justify-between items-start text-sm border-b border-gray-50 pb-4">
+                <div className="max-w-[65%]">
+                  <p className="font-bold text-gray-800 leading-tight">{matchedMenu.name}</p>
+                  <p className="text-gray-400 text-xs mt-1">Rp {matchedMenu.price.toLocaleString("id-ID")} x {cart[id]}</p>
+                </div>
+                <span className="font-black text-gray-800">Rp {(matchedMenu.price * cart[id]).toLocaleString("id-ID")}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="pt-4 mt-auto">
+        <div className="flex justify-between text-base mb-4">
+          <span className="text-gray-500 font-bold">Total Bayar:</span>
+          <span className="font-black text-xl text-orange-600">Rp {totalBelanja.toLocaleString("id-ID")}</span>
+        </div>
+        
+        <button
+          onClick={handleCheckout}
+          disabled={totalBelanja === 0}
+          className={`w-full py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 ${
+            totalBelanja > 0 
+              ? "bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/40 transform hover:-translate-y-0.5" 
+              : "bg-gray-100 text-gray-400 cursor-not-allowed"
+          }`}
+        >
+          <Wallet className="w-4 h-4" /> Konfirmasi Bayar
+        </button>
+      </div>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-[#F9F9F9] text-gray-800 font-sans pb-20">
+    <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-24 md:pb-10">
       
       {/* BRANDING HEADER */}
-      <div className="bg-white px-8 py-4 shadow-sm flex justify-between items-center border-b border-gray-100 sticky top-0 z-40">
-        <div className="cursor-pointer" onClick={() => setSelectedTenant(null)}>
-          <h1 className="text-2xl font-black text-[#EE6425] tracking-tight flex items-center gap-1.5">
-            <span className="text-3xl">🐝</span> bee<span className="text-amber-500">food</span>
-          </h1>
-          <p className="text-[11px] text-gray-400 font-semibold tracking-wide uppercase">Cepat • Hemat • Tanpa Antre</p>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="bg-orange-50 px-4 py-2 rounded-2xl border border-orange-100 text-right">
-            <p className="text-[10px] text-gray-400 font-bold uppercase">Dompet BeePay</p>
-            <p className="text-sm font-black text-[#EE6425]">Rp {saldo.toLocaleString("id-ID")}</p>
+      <header className="bg-white px-6 py-4 shadow-sm flex justify-between items-center sticky top-0 z-40">
+        <div className="cursor-pointer flex items-center gap-3" onClick={() => setSelectedTenant(null)}>
+          <div className="bg-orange-500 text-white p-2 rounded-xl shadow-sm shadow-orange-500/20">
+             <ChefHat className="w-6 h-6" />
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+            <h1 className="text-2xl font-black text-gray-900 tracking-tight leading-none">Bee<span className="text-orange-500">Food</span></h1>
+            <span className="bg-orange-50 text-orange-600 border border-orange-100 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md w-fit">Tanpa Antre</span>
           </div>
         </div>
-      </div>
-
-      <div className="p-8 max-w-7xl mx-auto grid grid-cols-4 max-xl:grid-cols-1 gap-8">
-        
-        {/* KOLOM KIRI & TENGAH: RESTORAN / MENU */}
-        <div className="col-span-3 space-y-6">
-          
-          {/* TRACKING STATUS PRE-ORDER (FR 4) */}
-          {activeOrder && (
-            <div className="bg-white p-5 rounded-2xl border-2 border-orange-500 shadow-sm animate-fade-in flex justify-between items-center max-sm:flex-col max-sm:items-start gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="bg-orange-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-lg">PROSES PRE-ORDER</span>
-                  <span className="text-xs font-mono font-bold text-gray-500">{activeOrder.id}</span>
-                </div>
-                <h3 className="text-base font-black text-gray-800">{activeOrder.menu}</h3>
-                <p className="text-xs text-gray-400">{activeOrder.tenant} • Estimasi Ambil: <span className="text-orange-500 font-bold">{activeOrder.estimate}</span></p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs bg-orange-50 text-orange-600 font-bold px-3 py-2 rounded-xl animate-pulse">
-                  🍳 Sedang Dimasak...
-                </span>
-              </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-orange-50 px-4 py-2.5 rounded-2xl border border-orange-100 flex items-center gap-3">
+            <div className="bg-white p-1.5 rounded-lg shadow-sm">
+               <Wallet className="w-4 h-4 text-orange-500" />
             </div>
-          )}
+            <div className="text-right">
+              <p className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">BeePay</p>
+              <p className="text-sm font-black text-orange-600 leading-none">Rp {saldo.toLocaleString("id-ID")}</p>
+            </div>
+          </div>
+        </div>
+      </header>
 
-          {/* JIKA BERADA DI HALAMAN UTAMA (LIST RESTORAN) */}
-          {!selectedTenant ? (
-            <div className="space-y-6">
-              
-              {/* GOFOOD PROMO BANNER MINI */}
-              <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-3xl p-6 text-white shadow-sm flex justify-between items-center">
-                <div>
-                  <span className="bg-white/20 text-xs font-bold px-3 py-1 rounded-full uppercase">Mager Antre Kelas?</span>
-                  <h2 className="text-2xl font-black mt-2 max-sm:text-xl">Pesan via BeeFood, Tinggal Ambil!</h2>
-                  <p className="text-white/80 text-xs mt-1">Estimasi pengerjaan terpantau real-time langsung dari smartphone kamu.</p>
+      <main className="p-6 md:p-8 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-4 gap-8">
+        
+        {/* KOLOM UTAMA */}
+        <div className="lg:col-span-3 space-y-6">
+          
+          {/* TRACKING STATUS PRE-ORDER */}
+          <AnimatePresence>
+            {activeOrder && (
+              <motion.div 
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className={`p-6 rounded-3xl border shadow-md flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden transition-colors duration-500 ${
+                  activeOrder.status === "Ready" ? "bg-green-50/50 border-green-200 shadow-green-500/10" : "bg-white border-orange-200 shadow-orange-500/5"
+                }`}
+              >
+                <div className={`absolute top-0 left-0 w-1 h-full transition-colors duration-500 ${
+                  activeOrder.status === "Pending" ? "bg-blue-500" :
+                  activeOrder.status === "Cooking" ? "bg-orange-500" : "bg-green-500"
+                }`} />
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className={`text-[10px] font-bold px-2.5 py-1 rounded-lg text-white transition-colors duration-500 ${
+                      activeOrder.status === "Pending" ? "bg-blue-500" :
+                      activeOrder.status === "Cooking" ? "bg-orange-500" : "bg-green-500"
+                    }`}>
+                      {activeOrder.status === "Ready" ? "PESANAN SELESAI" : "PROSES PRE-ORDER"}
+                    </span>
+                    <span className="text-xs font-mono font-bold text-gray-500">{activeOrder.id}</span>
+                  </div>
+                  <h3 className="text-lg font-black text-gray-900">{activeOrder.menu}</h3>
+                  <p className="text-sm text-gray-500 mt-1 flex items-center gap-1.5">
+                    <MapPin className="w-3.5 h-3.5" /> {activeOrder.tenant} 
+                    {activeOrder.status !== "Ready" && (
+                      <> • <Clock className="w-3.5 h-3.5 ml-1" /> Est: <span className="text-orange-500 font-bold">{activeOrder.estimate}</span></>
+                    )}
+                  </p>
                 </div>
-                <span className="text-5xl max-sm:hidden">🍱</span>
+                
+                <div className="flex flex-col gap-2 w-full md:w-auto">
+                  <div className={`px-4 py-2.5 rounded-xl flex items-center gap-2 border transition-colors duration-500 w-full md:w-auto justify-center ${
+                    activeOrder.status === "Pending" ? "bg-blue-50 border-blue-100" :
+                    activeOrder.status === "Cooking" ? "bg-orange-50 border-orange-100" :
+                    "bg-green-50 border-green-100"
+                  }`}>
+                     {activeOrder.status !== "Ready" && (
+                       <div className={`w-2 h-2 rounded-full animate-ping ${
+                         activeOrder.status === "Pending" ? "bg-blue-500" : "bg-orange-500"
+                       }`} />
+                     )}
+                     <span className={`text-sm font-bold ${
+                        activeOrder.status === "Pending" ? "text-blue-700" :
+                        activeOrder.status === "Cooking" ? "text-orange-700" : "text-green-700"
+                     }`}>
+                        {activeOrder.status === "Pending" ? "Menunggu Konfirmasi..." :
+                         activeOrder.status === "Cooking" ? "Sedang Dimasak" :
+                         "Siap Diambil!"}
+                     </span>
+                  </div>
+                  
+                  {activeOrder.status === "Ready" && (
+                    <button 
+                      onClick={() => setActiveOrder(null)}
+                      className="bg-green-500 hover:bg-green-600 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-sm transition-colors w-full md:w-auto"
+                    >
+                      Konfirmasi Pengambilan
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {!selectedTenant ? (
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+              className="space-y-8"
+            >
+              {/* PROMO BANNER LIGHT & CLEAN */}
+              <div className="relative rounded-3xl overflow-hidden shadow-sm border border-orange-100 bg-white mt-2">
+                {/* Soft Gradient Mesh */}
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-50/50 via-white to-amber-50/30" />
+                
+                {/* Decorative Elements */}
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-gradient-to-br from-orange-200/30 to-amber-200/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3 pointer-events-none" />
+                
+                {/* Image Background for Desktop */}
+                <div className="absolute right-0 top-0 bottom-0 pointer-events-none w-[55%] h-full hidden sm:block">
+                  <div className="absolute inset-0 bg-gradient-to-r from-white via-white/80 to-transparent z-10 w-1/3" />
+                  <img 
+                    src="https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=1000&auto=format&fit=crop&q=80" 
+                    alt="Healthy Food" 
+                    className="w-full h-full object-cover object-center"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-white/30 to-transparent z-10" />
+                </div>
+
+                <div className="relative z-10 p-8 md:p-12 flex justify-between items-center">
+                  <div className="max-w-md">
+                    <div className="inline-flex items-center gap-2 bg-orange-100/80 backdrop-blur-md px-3 py-1.5 rounded-full border border-orange-200 shadow-sm mb-5">
+                      <span className="flex h-2 w-2 rounded-full bg-orange-500 animate-pulse shadow-[0_0_8px_rgba(249,115,22,0.6)]"></span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-orange-700">Pesan Cepat</span>
+                    </div>
+                    
+                    <h2 className="text-3xl md:text-5xl font-black mb-4 leading-[1.1] tracking-tight text-gray-900">
+                      Pesan Sekarang,<br/>
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">Ambil Nanti!</span>
+                    </h2>
+                    
+                    <p className="text-gray-600 text-sm md:text-base font-medium mb-8 max-w-sm leading-relaxed">
+                      Estimasi pengerjaan terpantau real-time. Hindari antrean panjang dan nikmati waktu istirahatmu.
+                    </p>
+                    
+                    <button className="bg-gray-900 text-white font-black px-7 py-3.5 rounded-xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-1 active:translate-y-0 text-sm flex items-center gap-2 group">
+                      Lihat Menu <ChevronLeft className="w-4 h-4 rotate-180 group-hover:translate-x-1 transition-transform" />
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              {/* SEARCH BAR & FILTER KATEGORI */}
-              <div className="space-y-3">
-                <div className="relative w-full">
+              {/* SEARCH & FILTER */}
+              <div className="space-y-4 sticky top-20 z-30 bg-gray-50/80 backdrop-blur-md py-4 -mx-4 px-4 sm:mx-0 sm:px-0">
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                    <Search className="w-5 h-5 text-gray-400" />
+                  </div>
                   <input 
                     type="text" 
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Mau makan apa hari ini di kantin Binus?..." 
-                    className="w-full bg-white p-4 pl-12 rounded-2xl border border-gray-200 outline-none focus:border-orange-500 font-medium text-sm transition shadow-inner"
+                    placeholder="Cari restoran atau menu..." 
+                    className="w-full bg-white py-4 pl-12 pr-4 rounded-2xl border border-gray-200 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-medium text-sm shadow-sm"
                   />
-                  <span className="absolute left-4 top-4 text-gray-400">🔍</span>
                 </div>
 
-                {/* Pil Filter Kategori Populer */}
-                <div className="flex gap-2 overflow-x-auto pb-2">
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                   {categories.map((cat) => (
                     <button
                       key={cat}
                       onClick={() => setSelectedCategory(cat)}
-                      className={`px-4 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap border ${
+                      className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap border-2 ${
                         selectedCategory === cat 
-                          ? "bg-orange-500 text-white border-orange-500 shadow-sm" 
-                          : "bg-white text-gray-500 border-gray-100 hover:bg-gray-50"
+                          ? "bg-gray-900 text-white border-gray-900 shadow-md" 
+                          : "bg-white text-gray-500 border-transparent hover:border-gray-200 shadow-sm"
                       }`}
                     >
                       {cat}
@@ -195,92 +358,108 @@ const StudentDashboard = () => {
                 </div>
               </div>
 
-              {/* DAFTAR MERCHANTS / OUTLETS RESTORAN */}
+              {/* DAFTAR MERCHANTS */}
               <div>
-                <h2 className="text-lg font-black text-gray-800 mb-4">Semua Restoran Terdekat</h2>
-                <div className="grid grid-cols-3 max-md:grid-cols-2 max-sm:grid-cols-1 gap-5">
+                <h2 className="text-xl font-black text-gray-900 mb-6">Pilihan Restoran Kantin</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                   {filteredTenants.map((tenant) => (
-                    <div 
+                    <motion.div 
+                      whileHover={{ y: -4 }}
                       key={tenant.id}
                       onClick={() => setSelectedTenant(tenant)}
-                      className="bg-white rounded-2xl overflow-hidden border border-gray-100 hover:border-orange-200 hover:shadow-md cursor-pointer transition-all flex flex-col justify-between"
+                      className="bg-white rounded-3xl overflow-hidden border border-gray-100 hover:border-orange-200 shadow-sm hover:shadow-xl hover:shadow-orange-500/10 cursor-pointer transition-all flex flex-col group"
                     >
-                      <div className="h-36 w-full relative bg-gray-100">
-                        <img src={tenant.image} alt={tenant.name} className="w-full h-full object-cover" />
+                      <div className="h-40 w-full relative overflow-hidden bg-gray-100">
+                        <img src={tenant.image} alt={tenant.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-60" />
                         {tenant.promo && (
-                          <span className="absolute bottom-3 left-3 bg-[#EE6425] text-white text-[10px] font-black px-2.5 py-1 rounded-md shadow">
-                            🎁 {tenant.promo}
+                          <span className="absolute top-3 left-3 bg-orange-500 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
+                            {tenant.promo}
                           </span>
                         )}
                       </div>
-                      <div className="p-4">
-                        <h3 className="font-black text-gray-800 text-sm truncate">{tenant.name}</h3>
-                        <p className="text-[11px] text-gray-400 font-medium mt-0.5">{tenant.category}</p>
-                        
-                        <div className="flex items-center gap-3 mt-3 text-xs text-gray-500 font-bold bg-gray-50 p-2 rounded-xl">
-                          <span className="text-amber-500">⭐ {tenant.rating}</span>
-                          <span>•</span>
-                          <span className="text-[11px]">{tenant.distance}</span>
+                      <div className="p-5 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex justify-between items-start mb-1">
+                             <h3 className="font-black text-gray-900 text-base leading-tight group-hover:text-orange-600 transition-colors">{tenant.name}</h3>
+                             <div className="flex items-center gap-1 bg-gray-50 px-2 py-1 rounded-lg border border-gray-100 shrink-0">
+                               <Star className="w-3 h-3 text-amber-500 fill-amber-500" />
+                               <span className="text-xs font-bold text-gray-700">{tenant.rating}</span>
+                             </div>
+                          </div>
+                          <p className="text-xs text-gray-500 font-medium mb-3">{tenant.category}</p>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                           <MapPin className="w-3.5 h-3.5 text-gray-400" />
+                           {tenant.distance}
                         </div>
                       </div>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </div>
 
-            </div>
+            </motion.div>
           ) : (
             
-            // JIKA MASUK KE DETAIL RESTORAN (GOFOOD MENU VIEW)
-            <div className="space-y-6 animate-fade-in">
+            // DETAIL RESTORAN
+            <motion.div 
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              className="space-y-6"
+            >
               <button 
                 onClick={() => setSelectedTenant(null)}
-                className="text-xs font-black text-gray-500 hover:text-orange-500 bg-white border border-gray-100 px-4 py-2.5 rounded-xl shadow-sm transition"
+                className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-orange-600 bg-white border border-gray-200 px-4 py-2.5 rounded-xl shadow-sm transition-all hover:border-orange-200"
               >
-                ← Kembali ke Beranda BeeFood
+                <ChevronLeft className="w-4 h-4" /> Kembali ke Beranda
               </button>
 
-              {/* Jumbotron Deskripsi Restoran */}
-              <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex items-center gap-6 max-sm:flex-col max-sm:items-start">
-                <img src={selectedTenant.image} alt={selectedTenant.name} className="w-28 h-28 object-cover rounded-2xl shadow-inner bg-gray-50" />
-                <div className="space-y-1">
-                  <span className="bg-orange-50 text-[#EE6425] text-[10px] font-extrabold px-2.5 py-0.5 rounded-lg border border-orange-100 uppercase">
+              <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-6 relative overflow-hidden">
+                <div className="absolute right-0 top-0 w-32 h-32 bg-orange-50 rounded-bl-full -z-0 opacity-50" />
+                <img src={selectedTenant.image} alt={selectedTenant.name} className="w-24 h-24 md:w-32 md:h-32 object-cover rounded-2xl shadow-md z-10" />
+                <div className="space-y-2 z-10">
+                  <span className="inline-block bg-gray-100 text-gray-600 text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-wider">
                     {selectedTenant.category}
                   </span>
-                  <h2 className="text-2xl font-black text-gray-800">{selectedTenant.name}</h2>
-                  <p className="text-xs text-gray-400 font-semibold">📍 {selectedTenant.location} • ⭐ {selectedTenant.rating}</p>
-                  {selectedTenant.promo && <p className="text-xs text-green-600 font-bold">✨ Promo: {selectedTenant.promo}</p>}
+                  <h2 className="text-3xl font-black text-gray-900">{selectedTenant.name}</h2>
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 font-medium">
+                    <span className="flex items-center gap-1"><MapPin className="w-4 h-4" /> {selectedTenant.distance}</span>
+                    <span className="flex items-center gap-1"><Star className="w-4 h-4 text-amber-500 fill-amber-500" /> {selectedTenant.rating}</span>
+                  </div>
                 </div>
               </div>
 
-              {/* LIST MENU BERGAYA KARTU GOFOOD */}
               <div className="space-y-4">
-                <h3 className="text-base font-black text-gray-700">Pilihan Menu Terfavorit</h3>
-                <div className="space-y-3">
+                <h3 className="text-xl font-black text-gray-900 mb-4">Menu Terfavorit</h3>
+                <div className="grid gap-4">
                   {selectedTenant.menus.map((menu) => (
-                    <div key={menu.id} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex justify-between gap-4 items-center">
-                      <div className="flex-1 space-y-1 pr-4">
-                        <h4 className="font-black text-gray-800 text-sm leading-snug">{menu.name}</h4>
-                        <p className="text-xs text-gray-400 font-medium line-clamp-2">{menu.desc}</p>
-                        <p className="text-[#EE6425] font-black text-base pt-1">Rp {menu.price.toLocaleString("id-ID")}</p>
+                    <div key={menu.id} className="bg-white p-4 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow flex justify-between gap-4">
+                      <div className="flex-1 flex flex-col justify-between py-1">
+                        <div>
+                          <h4 className="font-black text-gray-900 text-base">{menu.name}</h4>
+                          <p className="text-sm text-gray-500 mt-1 line-clamp-2 pr-4">{menu.desc}</p>
+                        </div>
+                        <p className="text-orange-600 font-black text-lg mt-3">Rp {menu.price.toLocaleString("id-ID")}</p>
                       </div>
                       
-                      <div className="w-28 h-28 max-sm:w-24 max-sm:h-24 bg-gray-50 rounded-2xl relative overflow-hidden shadow-inner flex-shrink-0">
-                        <img src={menu.image} alt={menu.name} className="w-full h-full object-cover" />
+                      <div className="w-28 h-28 md:w-32 md:h-32 rounded-2xl relative overflow-hidden shrink-0 group">
+                        <img src={menu.image} alt={menu.name} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent opacity-80" />
                         
                         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-[85%]">
                           {!cart[menu.id] ? (
                             <button 
                               onClick={() => updateCartQuantity(menu.id, 1)}
-                              className="w-full bg-white text-[#EE6425] hover:bg-orange-50 border border-gray-100 text-xs font-black py-1.5 rounded-xl shadow-md transition uppercase text-center"
+                              className="w-full bg-white text-gray-900 hover:text-orange-600 border border-gray-100 text-xs font-black py-2 rounded-xl shadow-lg transition-colors text-center"
                             >
                               Tambah
                             </button>
                           ) : (
-                            <div className="flex items-center justify-between bg-[#EE6425] text-white text-xs font-black py-1.5 px-2 rounded-xl shadow-md">
-                              <button onClick={() => updateCartQuantity(menu.id, -1)} className="px-1 hover:bg-black/10 rounded">-</button>
+                            <div className="flex items-center justify-between bg-orange-500 text-white text-sm font-black py-1.5 px-1 rounded-xl shadow-lg">
+                              <button onClick={() => updateCartQuantity(menu.id, -1)} className="w-7 h-7 flex items-center justify-center hover:bg-white/20 rounded-lg">-</button>
                               <span>{cart[menu.id]}</span>
-                              <button onClick={() => updateCartQuantity(menu.id, 1)} className="px-1 hover:bg-black/10 rounded">+</button>
+                              <button onClick={() => updateCartQuantity(menu.id, 1)} className="w-7 h-7 flex items-center justify-center hover:bg-white/20 rounded-lg">+</button>
                             </div>
                           )}
                         </div>
@@ -290,60 +469,68 @@ const StudentDashboard = () => {
                 </div>
               </div>
 
-            </div>
+            </motion.div>
           )}
         </div>
 
-        {/* 3. KASIR KERANJANG SISI KANAN LAYOUT GOFOOD */}
-        <div className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm h-fit space-y-4 sticky top-24">
-          <h3 className="font-black text-gray-800 text-sm border-b border-gray-50 pb-3 flex items-center gap-1.5">
-            🛒 Basket Pre-Order
-          </h3>
-          
-          {Object.keys(cart).length === 0 ? (
-            <div className="text-center py-10">
-              <span className="text-4xl block mb-2">🍕</span>
-              <p className="text-xs text-gray-400 font-medium italic">Belum ada item di keranjang belanja kamu.</p>
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-              {Object.keys(cart).map((id) => {
-                const matchedMenu = allGlobalMenus.find((m) => m.id === parseInt(id));
-                if (!matchedMenu) return null;
-                return (
-                  <div key={id} className="flex justify-between items-start text-xs border-b border-gray-50 pb-2.5">
-                    <div className="max-w-[70%]">
-                      <p className="font-black text-gray-700 truncate">{matchedMenu.name}</p>
-                      <p className="text-gray-400 text-[10px] mt-0.5">Rp {matchedMenu.price.toLocaleString("id-ID")} x {cart[id]}</p>
-                    </div>
-                    <span className="font-bold text-gray-800">Rp {(matchedMenu.price * cart[id]).toLocaleString("id-ID")}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          <div className="pt-3 space-y-3 border-t border-gray-100">
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-400 font-bold">Subtotal Bayar:</span>
-              <span className="font-black text-lg text-[#EE6425]">Rp {totalBelanja.toLocaleString("id-ID")}</span>
-            </div>
-            
-            <button
-              onClick={handleCheckout}
-              disabled={totalBelanja === 0}
-              className={`w-full py-3.5 rounded-2xl text-xs font-black transition flex items-center justify-center gap-2 ${
-                totalBelanja > 0 
-                  ? "bg-[#EE6425] text-white hover:bg-[#d5531c] active:scale-95 shadow-md shadow-orange-100" 
-                  : "bg-gray-100 text-gray-400 cursor-not-allowed"
-              }`}
-            >
-              💳 Konfirmasi & Pesan via BeePay
-            </button>
+        {/* KASIR DESKTOP */}
+        <div className="hidden lg:block">
+          <div className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm h-fit sticky top-24 flex flex-col">
+             {renderCartContent()}
           </div>
         </div>
 
+      </main>
+
+      {/* FLOATING CART BUTTON (MOBILE) */}
+      <div className="lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50">
+        <AnimatePresence>
+          {totalItems > 0 && !showMobileCart && (
+            <motion.button 
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              onClick={() => setShowMobileCart(true)}
+              className="w-full bg-gray-900 text-white p-4 rounded-2xl shadow-2xl flex items-center justify-between font-black border border-gray-800"
+            >
+              <div className="flex items-center gap-3">
+                <div className="bg-orange-500 w-8 h-8 rounded-full flex items-center justify-center text-sm">
+                  {totalItems}
+                </div>
+                <span>Lihat Keranjang</span>
+              </div>
+              <span className="text-orange-400">Rp {totalBelanja.toLocaleString("id-ID")}</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
       </div>
+
+      {/* MOBILE CART MODAL */}
+      <AnimatePresence>
+        {showMobileCart && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setShowMobileCart(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 lg:hidden"
+            />
+            <motion.div 
+              initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed bottom-0 left-0 right-0 bg-white rounded-t-3xl p-6 z-50 lg:hidden flex flex-col max-h-[85vh]"
+            >
+              <button 
+                onClick={() => setShowMobileCart(false)}
+                className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full text-gray-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              {renderCartContent()}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
