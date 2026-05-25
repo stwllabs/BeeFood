@@ -1,6 +1,6 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 generator client {
@@ -21,13 +21,18 @@ enum OrderStatus {
 }
 
 model User {
-  id       Int     @id @default(autoincrement())
-  name     String
-  email    String  @unique
-  password String
-  role     Role    @default(STUDENT)
-  balance  Float   @default(100000) // Default Rp 100.000 untuk simulasi pre-order
-  orders   Order[]
+  id          Int      @id @default(autoincrement())
+  name        String
+  email       String   @unique
+  password    String
+  role        Role     @default(STUDENT)
+  balance     Float    @default(100000) // Default Rp 100.000 untuk simulasi pre-order
+  phoneNumber String?
+  nim         String?  // Untuk mahasiswa
+  avatar      String?  // Untuk profile photo preset
+  orders      Order[]
+  tenantId    Int?     @unique
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id])
 }
 
 model Tenant {
@@ -35,8 +40,10 @@ model Tenant {
   name     String
   location String
   isOpen   Boolean @default(true)
+  image    String? // Untuk foto tenant
   menus    Menu[]
   orders   Order[]
+  user     User?
 }
 
 model Menu {
@@ -45,6 +52,7 @@ model Menu {
   price         Float
   estimatedTime Int     // Durasi masak dalam menit (FR Estimasi Waktu)
   isAvailable   Boolean @default(true)
+  image         String? // Untuk foto menu hidangan
   tenantId      Int
   tenant        Tenant  @relation(fields: [tenantId], references: [id])
 }
@@ -59,4 +67,14 @@ model Order {
   user       User        @relation(fields: [userId], references: [id])
   tenant     Tenant      @relation(fields: [tenantId], references: [id])
   items      Json        // Menyimpan array detail menu [{menuId, name, qty}]
+  feedback   Feedback?
 }
+
+model Feedback {
+  id        Int      @id @default(autoincrement())
+  orderId   Int      @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  rating    Int      // 1-5 bintang
+  comment   String?
+  createdAt DateTime @default(now())
+}

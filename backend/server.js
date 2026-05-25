@@ -10,7 +10,7 @@ require('dotenv').config();
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*" } // Di production, batasi dengan URL frontend kamu
+  cors: { origin: "*" }
 });
 
 const prisma = new PrismaClient();
@@ -30,70 +30,449 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => console.log('User disconnected'));
 });
 
+// --- MIDDLEWARE ---
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "Akses ditolak, token tidak ditemukan" });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'secret_beefood_123', (err, user) => {
+    if (err) {
+      return res.status(403).json({ error: "Token tidak valid atau kadaluwarsa" });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+// --- DATABASE AUTO-SEEDING ---
+const seedDatabase = async () => {
+  try {
+    const tenantCount = await prisma.tenant.count();
+    if (tenantCount === 0) {
+      console.log("Seeding database dengan data default...");
+      
+      const t1 = await prisma.tenant.create({
+        data: {
+          name: "Kantin Ayam Geprek SASC",
+          location: "Kantin SASC Lt. 1",
+          isOpen: true,
+          image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60",
+          menus: {
+            create: [
+              { name: "Ayam Geprek Crispy (Lv 1-5)", price: 18000, estimatedTime: 10, isAvailable: true, image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&auto=format&fit=crop&q=60" },
+              { name: "Ayam Bakar Madu Binus", price: 20000, estimatedTime: 12, isAvailable: true, image: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=500&auto=format&fit=crop&q=60" }
+            ]
+          }
+        }
+      });
+
+      const t2 = await prisma.tenant.create({
+        data: {
+          name: "Kedai Kopi Kampus & Boba",
+          location: "Kantin SASC Lt. 2",
+          isOpen: true,
+          image: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500&auto=format&fit=crop&q=60",
+          menus: {
+            create: [
+              { name: "Ice Caramel Latte", price: 22000, estimatedTime: 5, isAvailable: true, image: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500&auto=format&fit=crop&q=60" },
+              { name: "Matcha Glaze Boba", price: 19000, estimatedTime: 6, isAvailable: true, image: "https://images.unsplash.com/photo-1541658016709-82535e94bc69?w=500&auto=format&fit=crop&q=60" }
+            ]
+          }
+        }
+      });
+
+      const t3 = await prisma.tenant.create({
+        data: {
+          name: "Gorengan Renyah Kampus",
+          location: "Kantin Syahdan",
+          isOpen: true,
+          image: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&auto=format&fit=crop&q=60",
+          menus: {
+            create: [
+              { name: "Tempe Mendoan (Isi 3)", price: 7000, estimatedTime: 5, isAvailable: true, image: "https://images.unsplash.com/photo-1624371414361-e6e2ed58c242?w=500&auto=format&fit=crop&q=60" }
+            ]
+          }
+        }
+      });
+
+      const salt = await bcrypt.genSalt(10);
+      const studentPassword = await bcrypt.hash("password123", salt);
+      const tenantPassword = await bcrypt.hash("password123", salt);
+
+      // Student Default Account
+      await prisma.user.create({
+        data: {
+          name: "Evan Wijaya",
+          email: "student@binus.ac.id",
+          password: studentPassword,
+          role: "STUDENT",
+          balance: 1000000,
+          phoneNumber: "081234567890",
+          nim: "2501234567",
+          avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Evan"
+        }
+      });
+
+      // Tenant Default Account
+      await prisma.user.create({
+        data: {
+          name: "SASC Geprek Owner",
+          email: "tenant@binus.ac.id",
+          password: tenantPassword,
+          role: "TENANT",
+          phoneNumber: "081298765432",
+          tenantId: t1.id
+        }
+      });
+
+      console.log("Database seeded sukses!");
+    }
+  } catch (err) {
+    console.error("Gagal seeding database:", err);
+  }
+};
+seedDatabase();
+
 // --- API ROUTES ---
 
-// 1. Auth: Register User (Secured)
+// 1. Auth: Register User
 app.post('/api/auth/register', async (req, res) => {
-  const { name, email, password, role } = req.body;
+  const { name, email, password, role, phoneNumber, nim, tenantName, tenantLocation } = req.body;
+  
+  if (!name || !email || !password || !role) {
+    return res.status(400).json({ error: "Kolom nama, email, password, dan role harus diisi" });
+  }
+
+  // Validasi email menggunakan regex
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: "Format email tidak valid" });
+  }
+
+  // Validasi minimal panjang password
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password minimal harus 6 karakter" });
+  }
+
   try {
-    // Enkripsi password menggunakan bcrypt
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ error: "Email sudah terdaftar" });
+    }
+
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword, role }
-    });
+    let createdUser;
 
-    // Buat JWT Token
-    const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret_beefood_123', { expiresIn: '1d' });
+    if (role === "STUDENT") {
+      createdUser = await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role: "STUDENT",
+          phoneNumber: phoneNumber || "",
+          nim: nim || "",
+          avatar: `https://api.dicebear.com/7.x/adventurer/svg?seed=${encodeURIComponent(name)}`
+        }
+      });
+    } else if (role === "TENANT") {
+      if (!tenantName || !tenantLocation) {
+        return res.status(400).json({ error: "Nama tenant dan lokasi harus diisi untuk Tenant" });
+      }
+
+      // Buat data tenant
+      const newTenant = await prisma.tenant.create({
+        data: {
+          name: tenantName,
+          location: tenantLocation,
+          isOpen: true,
+          image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60"
+        }
+      });
+
+      // Buat user linked ke tenant
+      createdUser = await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          role: "TENANT",
+          phoneNumber: phoneNumber || "",
+          tenantId: newTenant.id
+        }
+      });
+    } else {
+      return res.status(400).json({ error: "Role tidak valid" });
+    }
+
+    const token = jwt.sign(
+      { id: createdUser.id, role: createdUser.role },
+      process.env.JWT_SECRET || 'secret_beefood_123',
+      { expiresIn: '1d' }
+    );
 
     res.status(201).json({ 
       message: "User berhasil dibuat", 
-      user: { id: user.id, name: user.name, role: user.role },
+      user: {
+        id: createdUser.id,
+        name: createdUser.name,
+        email: createdUser.email,
+        role: createdUser.role,
+        balance: createdUser.balance,
+        phoneNumber: createdUser.phoneNumber,
+        nim: createdUser.nim,
+        avatar: createdUser.avatar,
+        tenantId: createdUser.tenantId
+      },
       token
     });
   } catch (err) {
-    res.status(400).json({ error: "Email sudah terdaftar" });
+    console.error("Register error:", err);
+    res.status(500).json({ error: "Gagal membuat akun" });
   }
 });
 
-// 2. Auth: Login (Secured)
+// 2. Auth: Login
 app.post('/api/auth/login', async (req, res) => {
   const { email, password } = req.body;
-  const user = await prisma.user.findUnique({ where: { email } });
   
-  if (!user) {
-    return res.status(401).json({ error: "Kredensial salah" });
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email dan password wajib diisi" });
   }
 
-  // Verifikasi hash password
-  const isMatch = await bcrypt.compare(password, user.password);
-  if (!isMatch) {
-    return res.status(401).json({ error: "Kredensial salah" });
+  try {
+    const user = await prisma.user.findUnique({ 
+      where: { email },
+      include: { tenant: true }
+    });
+    
+    if (!user) {
+      return res.status(401).json({ error: "Email atau password salah" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: "Email atau password salah" });
+    }
+
+    const token = jwt.sign(
+      { id: user.id, role: user.role },
+      process.env.JWT_SECRET || 'secret_beefood_123',
+      { expiresIn: '1d' }
+    );
+
+    res.json({ 
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        balance: user.balance,
+        phoneNumber: user.phoneNumber,
+        nim: user.nim,
+        avatar: user.avatar,
+        tenantId: user.tenantId,
+        tenant: user.tenant
+      },
+      token
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Terjadi kesalahan pada login" });
   }
-
-  // Buat JWT Token
-  const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET || 'secret_beefood_123', { expiresIn: '1d' });
-
-  res.json({ 
-    user: { id: user.id, name: user.name, role: user.role, balance: user.balance },
-    token
-  });
 });
 
-// 3. Get Menus & Tenants
+// 3. User Profile: Get Profile info
+app.get('/api/profile', authenticateToken, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      include: { tenant: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: "User tidak ditemukan" });
+    }
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      balance: user.balance,
+      phoneNumber: user.phoneNumber,
+      nim: user.nim,
+      avatar: user.avatar,
+      tenantId: user.tenantId,
+      tenant: user.tenant
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil profil" });
+  }
+});
+
+// 4. User Profile: Update profile info
+app.put('/api/profile', authenticateToken, async (req, res) => {
+  const { name, phoneNumber, nim, avatar } = req.body;
+  try {
+    const updatedUser = await prisma.user.update({
+      where: { id: req.user.id },
+      data: {
+        name,
+        phoneNumber: phoneNumber || null,
+        nim: nim || null,
+        avatar: avatar || null
+      },
+      include: { tenant: true }
+    });
+
+    res.json({
+      message: "Profil berhasil diperbarui",
+      user: {
+        id: updatedUser.id,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        role: updatedUser.role,
+        balance: updatedUser.balance,
+        phoneNumber: updatedUser.phoneNumber,
+        nim: updatedUser.nim,
+        avatar: updatedUser.avatar,
+        tenantId: updatedUser.tenantId,
+        tenant: updatedUser.tenant
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal memperbarui profil" });
+  }
+});
+
+// 5. Get Tenants (includes Menus & Reviews Rating calculations)
+app.get('/api/tenants', async (req, res) => {
+  try {
+    const tenants = await prisma.tenant.findMany({
+      include: {
+        menus: true,
+        orders: {
+          include: {
+            feedback: true
+          }
+        }
+      }
+    });
+
+    const formattedTenants = tenants.map(t => {
+      // Hitung rata-rata rating
+      let rating = "4.5"; // Rating default jika belum ada ulasan
+      let totalRating = 0;
+      let reviewCount = 0;
+
+      t.orders.forEach(order => {
+        if (order.feedback) {
+          totalRating += order.feedback.rating;
+          reviewCount++;
+        }
+      });
+
+      if (reviewCount > 0) {
+        rating = (totalRating / reviewCount).toFixed(1);
+      }
+
+      return {
+        id: t.id,
+        name: t.name,
+        location: t.location,
+        isOpen: t.isOpen,
+        image: t.image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60",
+        rating: rating,
+        menus: t.menus,
+        reviewCount: reviewCount
+      };
+    });
+
+    res.json(formattedTenants);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Gagal mengambil data tenant" });
+  }
+});
+
+// 6. Get Menus Only
 app.get('/api/menus', async (req, res) => {
-  const menus = await prisma.menu.findMany({ include: { tenant: true } });
-  res.json(menus);
+  try {
+    const menus = await prisma.menu.findMany({ include: { tenant: true } });
+    res.json(menus);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil menu" });
+  }
 });
 
-// 4. Create Pre-Order (FR: Transaksi Digital & Potong Saldo)
-app.post('/api/orders', async (req, res) => {
-  const { userId, tenantId, items, totalPrice } = req.body;
+// 7. Toggle Menu Availability (Stok)
+app.patch('/api/menus/:id/toggle', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    const menu = await prisma.menu.findUnique({ where: { id: parseInt(id) } });
+    if (!menu) {
+      return res.status(404).json({ error: "Menu tidak ditemukan" });
+    }
+
+    const updatedMenu = await prisma.menu.update({
+      where: { id: parseInt(id) },
+      data: { isAvailable: !menu.isAvailable }
+    });
+
+    res.json(updatedMenu);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal memperbarui stok menu" });
+  }
+});
+
+// 8. Add New Menu Item
+app.post('/api/tenants/:tenantId/menus', authenticateToken, async (req, res) => {
+  const tenantId = parseInt(req.params.tenantId);
+  const { name, price, estimatedTime, image } = req.body;
+
+  if (!name || !price || !estimatedTime) {
+    return res.status(400).json({ error: "Parameter menu tidak lengkap" });
+  }
+
+  try {
+    const newMenu = await prisma.menu.create({
+      data: {
+        name,
+        price: parseFloat(price),
+        estimatedTime: parseInt(estimatedTime),
+        isAvailable: true,
+        image: image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60",
+        tenantId
+      }
+    });
+
+    res.status(201).json(newMenu);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal menambahkan menu baru" });
+  }
+});
+
+// 9. Create Pre-Order
+app.post('/api/orders', authenticateToken, async (req, res) => {
+  const { tenantId, items, totalPrice } = req.body;
+  const userId = req.user.id;
+
+  if (!tenantId || !items || !totalPrice) {
+    return res.status(400).json({ error: "Data pesanan tidak lengkap" });
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (user.balance < totalPrice) throw new Error("Saldo Digital Tidak Mencukupi");
+      if (user.balance < totalPrice) {
+        throw new Error("Saldo Digital Tidak Mencukupi");
+      }
 
       // Potong Saldo
       await tx.user.update({
@@ -103,43 +482,196 @@ app.post('/api/orders', async (req, res) => {
 
       // Buat Order
       return await tx.order.create({
-        data: { userId, tenantId, totalPrice, items, status: 'PENDING' }
+        data: { 
+          userId, 
+          tenantId: parseInt(tenantId), 
+          totalPrice, 
+          items, 
+          status: 'PENDING' 
+        },
+        include: {
+          tenant: true,
+          user: { select: { name: true, nim: true, phoneNumber: true } }
+        }
       });
     });
 
-    // Beritahu tenant ada orderan baru masuk secara real-time
+    // Beritahu tenant secara real-time
     req.io.emit('newOrder', result);
-    res.status(201).json({ message: "Pre-order berhasil ditempatkan", data: result });
+    
+    // AUTO-UPDATE STATUS: PENDING -> COOKING after 3 seconds
+    setTimeout(async () => {
+      try {
+        const updatedOrder = await prisma.order.update({
+          where: { id: result.id },
+          data: { status: 'COOKING' },
+          include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
+        });
+        req.io.emit('orderStatusUpdated', updatedOrder);
+        console.log(`Order ${result.id} status updated to COOKING`);
+      } catch (e) {
+        console.error('Failed to update order status to COOKING:', e);
+      }
+    }, 3000);
+
+    // AUTO-UPDATE STATUS: COOKING -> READY after 5 seconds
+    setTimeout(async () => {
+      try {
+        const updatedOrder = await prisma.order.update({
+          where: { id: result.id },
+          data: { status: 'READY' },
+          include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
+        });
+        req.io.emit('orderStatusUpdated', updatedOrder);
+        console.log(`Order ${result.id} status updated to READY`);
+      } catch (e) {
+        console.error('Failed to update order status to READY:', e);
+      }
+    }, 5000);
+
+    res.status(201).json({ message: "Pre-order berhasil ditempatkan", order: result });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// 5. Update Status Order (FR: Manajemen Pengambilan & Tracking)
-app.patch('/api/orders/:id', async (req, res) => {
+// 10. Update Status Order
+app.patch('/api/orders/:id', authenticateToken, async (req, res) => {
   const { id } = req.params;
   const { status } = req.body; // PENDING -> COOKING -> READY -> DONE
+  
   try {
     const updatedOrder = await prisma.order.update({
       where: { id: parseInt(id) },
-      data: { status }
+      data: { status },
+      include: {
+        tenant: true,
+        user: { select: { name: true, nim: true, phoneNumber: true } }
+      }
     });
 
-    // Emit event ke semua client (mahasiswa akan tahu status makanannya berubah)
     req.io.emit('orderStatusUpdated', updatedOrder);
     res.json(updatedOrder);
   } catch (err) {
-    res.status(500).json({ error: "Gagal memperbarui status" });
+    res.status(500).json({ error: "Gagal memperbarui status order" });
   }
 });
 
-// 6. Get User/Tenant Orders
-app.get('/api/orders/user/:userId', async (req, res) => {
-  const orders = await prisma.order.findMany({
-    where: { userId: parseInt(req.params.userId) },
-    orderBy: { createdAt: 'desc' }
-  });
-  res.json(orders);
+// 11. Get Student/Mahasiswa Orders List
+app.get('/api/orders/user', authenticateToken, async (req, res) => {
+  try {
+    const orders = await prisma.order.findMany({
+      where: { userId: req.user.id },
+      include: { 
+        tenant: true,
+        feedback: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil pesanan mahasiswa" });
+  }
+});
+
+// 12. Get Tenant Orders List
+app.get('/api/orders/tenant/:tenantId', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId);
+    const orders = await prisma.order.findMany({
+      where: { tenantId },
+      include: { 
+        user: { select: { id: true, name: true, nim: true, phoneNumber: true, avatar: true } },
+        feedback: true
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+    res.json(orders);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil pesanan tenant" });
+  }
+});
+
+// 13. Create Feedback for Completed Order
+app.post('/api/orders/:id/feedback', authenticateToken, async (req, res) => {
+  const { id } = req.params;
+  const { rating, comment } = req.body;
+
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "Rating harus berupa angka 1-5" });
+  }
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: parseInt(id) }
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: "Pesanan tidak ditemukan" });
+    }
+
+    if (order.userId !== req.user.id) {
+      return res.status(403).json({ error: "Akses ditolak" });
+    }
+
+    if (order.status !== 'DONE') {
+      return res.status(400).json({ error: "Pesanan belum selesai diambil" });
+    }
+
+    const existingFeedback = await prisma.feedback.findUnique({
+      where: { orderId: parseInt(id) }
+    });
+
+    if (existingFeedback) {
+      return res.status(400).json({ error: "Pesanan ini sudah diulas sebelumnya" });
+    }
+
+    const feedback = await prisma.feedback.create({
+      data: {
+        orderId: parseInt(id),
+        rating: parseInt(rating),
+        comment: comment || ""
+      }
+    });
+
+    res.status(201).json({ message: "Ulasan berhasil dikirim", feedback });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Gagal mengirimkan ulasan" });
+  }
+});
+
+// 14. Get Feedback for a specific Tenant
+app.get('/api/tenants/:tenantId/feedback', async (req, res) => {
+  try {
+    const tenantId = parseInt(req.params.tenantId);
+    const feedback = await prisma.feedback.findMany({
+      where: {
+        order: { tenantId }
+      },
+      include: {
+        order: {
+          include: {
+            user: { select: { name: true, avatar: true } }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const formattedFeedback = feedback.map(f => ({
+      id: f.id,
+      rating: f.rating,
+      comment: f.comment,
+      createdAt: f.createdAt,
+      studentName: f.order.user.name,
+      studentAvatar: f.order.user.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=default"
+    }));
+
+    res.json(formattedFeedback);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil ulasan" });
+  }
 });
 
 const PORT = process.env.PORT || 5000;
