@@ -110,7 +110,7 @@ const seedDatabase = async () => {
           email: "student@binus.ac.id",
           password: studentPassword,
           role: "STUDENT",
-          balance: 1000000,
+          balance: 100000,
           phoneNumber: "081234567890",
           nim: "2501234567",
           avatar: "https://api.dicebear.com/7.x/adventurer/svg?seed=Evan"
@@ -318,7 +318,7 @@ app.get('/api/profile', authenticateToken, async (req, res) => {
 
 // 4. User Profile: Update profile info
 app.put('/api/profile', authenticateToken, async (req, res) => {
-  const { name, phoneNumber, nim, avatar } = req.body;
+  const { name, phoneNumber, nim, avatar, tenantName, tenantLocation, tenantIsOpen, tenantImage } = req.body;
   try {
     const updatedUser = await prisma.user.update({
       where: { id: req.user.id },
@@ -330,6 +330,42 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       },
       include: { tenant: true }
     });
+
+    // Jika user terhubung ke tenant dan field tenant di-update
+    if (updatedUser.tenantId && (tenantName || tenantLocation || tenantIsOpen !== undefined || tenantImage !== undefined)) {
+      const tenantData = {};
+      if (tenantName) tenantData.name = tenantName;
+      if (tenantLocation) tenantData.location = tenantLocation;
+      if (tenantIsOpen !== undefined) tenantData.isOpen = !!tenantIsOpen;
+      if (tenantImage !== undefined) tenantData.image = tenantImage;
+
+      await prisma.tenant.update({
+        where: { id: updatedUser.tenantId },
+        data: tenantData
+      });
+
+      // Ambil kembali user dengan data tenant terupdate
+      const refreshedUser = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        include: { tenant: true }
+      });
+
+      return res.json({
+        message: "Profil dan data tenant berhasil diperbarui",
+        user: {
+          id: refreshedUser.id,
+          name: refreshedUser.name,
+          email: refreshedUser.email,
+          role: refreshedUser.role,
+          balance: refreshedUser.balance,
+          phoneNumber: refreshedUser.phoneNumber,
+          nim: refreshedUser.nim,
+          avatar: refreshedUser.avatar,
+          tenantId: refreshedUser.tenantId,
+          tenant: refreshedUser.tenant
+        }
+      });
+    }
 
     res.json({
       message: "Profil berhasil diperbarui",
@@ -347,6 +383,7 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       }
     });
   } catch (err) {
+    console.error("Gagal memperbarui profil:", err);
     res.status(500).json({ error: "Gagal memperbarui profil" });
   }
 });
@@ -367,7 +404,7 @@ app.get('/api/tenants', async (req, res) => {
 
     const formattedTenants = tenants.map(t => {
       // Hitung rata-rata rating
-      let rating = "4.5"; // Rating default jika belum ada ulasan
+      let rating = "0"; // Rating default jika belum ada ulasan
       let totalRating = 0;
       let reviewCount = 0;
 
@@ -460,25 +497,43 @@ app.post('/api/tenants/:tenantId/menus', authenticateToken, async (req, res) => 
 
 // 9. Create Pre-Order
 app.post('/api/orders', authenticateToken, async (req, res) => {
-  const { tenantId, items, totalPrice } = req.body;
+  const { tenantId, items, totalPrice, paymentMethod } = req.body;
   const userId = req.user.id;
 
   if (!tenantId || !items || !totalPrice) {
     return res.status(400).json({ error: "Data pesanan tidak lengkap" });
   }
 
+  const normalizedPaymentMethod = String(paymentMethod || "BEEPAY").toUpperCase().replace("QRISS", "QRIS");
+  if (!["BEEPAY", "QRIS"].includes(normalizedPaymentMethod)) {
+    return res.status(400).json({ error: "Metode pembayaran tidak valid" });
+  }
+
   try {
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { id: userId } });
-      if (user.balance < totalPrice) {
-        throw new Error("Saldo Digital Tidak Mencukupi");
-      }
 
-      // Potong Saldo
-      await tx.user.update({
-        where: { id: userId },
-        data: { balance: { decrement: totalPrice } }
-      });
+      // Debit hanya untuk BeePay (saldo internal)
+      if (normalizedPaymentMethod === "BEEPAY") {
+        if (user.balance < totalPrice) {
+          throw new Error("Saldo Digital Tidak Mencukupi");
+        }
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { balance: { decrement: totalPrice } }
+        });
+
+        await tx.walletTransaction.create({
+          data: {
+            userId,
+            type: "BEEPAY_SPEND",
+            method: "BEEPAY",
+            amount: totalPrice,
+            description: "Pengeluaran BeePay untuk pre-order"
+          }
+        });
+      }
 
       // Buat Order
       return await tx.order.create({
@@ -499,39 +554,101 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
     // Beritahu tenant secara real-time
     req.io.emit('newOrder', result);
     
-    // AUTO-UPDATE STATUS: PENDING -> COOKING after 3 seconds
+    // AUTO-UPDATE STATUS:
+    // - 3 detik: PENDING -> COOKING (menunggu konfirmasi)
+    // - 5 detik setelah itu: COOKING -> READY (durasi masak)
     setTimeout(async () => {
       try {
-        const updatedOrder = await prisma.order.update({
+        const cookingOrder = await prisma.order.update({
           where: { id: result.id },
           data: { status: 'COOKING' },
           include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
         });
-        req.io.emit('orderStatusUpdated', updatedOrder);
+        req.io.emit('orderStatusUpdated', cookingOrder);
         console.log(`Order ${result.id} status updated to COOKING`);
+
+        setTimeout(async () => {
+          try {
+            const readyOrder = await prisma.order.update({
+              where: { id: result.id },
+              data: { status: 'READY' },
+              include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
+            });
+            req.io.emit('orderStatusUpdated', readyOrder);
+            console.log(`Order ${result.id} status updated to READY`);
+          } catch (e) {
+            console.error('Failed to update order status to READY:', e);
+          }
+        }, 5000);
       } catch (e) {
         console.error('Failed to update order status to COOKING:', e);
       }
     }, 3000);
 
-    // AUTO-UPDATE STATUS: COOKING -> READY after 5 seconds
-    setTimeout(async () => {
-      try {
-        const updatedOrder = await prisma.order.update({
-          where: { id: result.id },
-          data: { status: 'READY' },
-          include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
-        });
-        req.io.emit('orderStatusUpdated', updatedOrder);
-        console.log(`Order ${result.id} status updated to READY`);
-      } catch (e) {
-        console.error('Failed to update order status to READY:', e);
-      }
-    }, 5000);
-
     res.status(201).json({ message: "Pre-order berhasil ditempatkan", order: result });
   } catch (err) {
     res.status(400).json({ error: err.message });
+  }
+});
+
+// 9b. Wallet: Top Up (QRIS) - menambah balance BeePay
+app.post('/api/wallet/topup', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+  const { amount, method } = req.body;
+
+  const normalizedMethod = String(method || "QRIS").toUpperCase().replace("QRISS", "QRIS");
+  const amountNum = Number(amount);
+
+  if (!amountNum || amountNum <= 0) {
+    return res.status(400).json({ error: "Jumlah top up tidak valid" });
+  }
+  if (!["QRIS"].includes(normalizedMethod)) {
+    return res.status(400).json({ error: "Metode top up tidak valid" });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedUser = await tx.user.update({
+        where: { id: userId },
+        data: { balance: { increment: amountNum } }
+      });
+
+      const transaction = await tx.walletTransaction.create({
+        data: {
+          userId,
+          type: "TOP_UP",
+          method: "QRIS",
+          amount: amountNum,
+          description: "Top up BeePay via QRIS"
+        }
+      });
+
+      return { updatedUser, transaction };
+    });
+
+    res.status(201).json({
+      message: "Top up berhasil",
+      balance: result.updatedUser.balance,
+      transaction: result.transaction
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Gagal melakukan top up" });
+  }
+});
+
+// 9c. Wallet: History transaksi balance (top up & pengeluaran BeePay)
+app.get('/api/wallet/history', authenticateToken, async (req, res) => {
+  const userId = req.user.id;
+
+  try {
+    const history = await prisma.walletTransaction.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: "Gagal mengambil history wallet" });
   }
 });
 

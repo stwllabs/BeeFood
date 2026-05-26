@@ -20,6 +20,16 @@ enum OrderStatus {
   DONE
 }
 
+enum WalletTransactionType {
+  TOP_UP
+  BEEPAY_SPEND
+}
+
+enum WalletPaymentMethod {
+  BEEPAY
+  QRIS
+}
+
 model User {
   id          Int      @id @default(autoincrement())
   name        String
@@ -31,6 +41,7 @@ model User {
   nim         String?  // Untuk mahasiswa
   avatar      String?  // Untuk profile photo preset
   orders      Order[]
+  walletTransactions WalletTransaction[]
   tenantId    Int?     @unique
   tenant      Tenant?  @relation(fields: [tenantId], references: [id])
 }
@@ -77,4 +88,15 @@ model Feedback {
   rating    Int      // 1-5 bintang
   comment   String?
   createdAt DateTime @default(now())
-}
+}
+
+model WalletTransaction {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
+  type        WalletTransactionType
+  method      WalletPaymentMethod
+  amount      Float
+  description String?
+  createdAt   DateTime @default(now())
+}

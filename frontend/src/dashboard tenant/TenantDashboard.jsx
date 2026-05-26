@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Store, ShoppingBag, Grid, LogOut, Menu, X, Check, ChefHat, Clock, Star, MessageSquare, Plus, CheckCircle2, AlertCircle } from "lucide-react";
+import { Store, ShoppingBag, Grid, LogOut, Menu, X, Check, ChefHat, Clock, Star, MessageSquare, Plus, CheckCircle2, AlertCircle, User, Phone, MapPin, Image } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
@@ -9,7 +9,7 @@ const API_URL = "http://localhost:5000/api";
 const TenantDashboard = () => {
   const navigate = useNavigate();
   
-  // Tab State: "orders" | "stock" | "reviews"
+  // Tab State: "orders" | "stock" | "reviews" | "profile"
   const [currentTab, setCurrentTab] = useState("orders");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -30,6 +30,25 @@ const TenantDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [successToast, setSuccessToast] = useState("");
+
+  // Profile Form States
+  const [profileName, setProfileName] = useState("");
+  const [profilePhone, setProfilePhone] = useState("");
+  const [tenantName, setTenantName] = useState("");
+  const [tenantLocation, setTenantLocation] = useState("");
+  const [tenantIsOpen, setTenantIsOpen] = useState(true);
+  const [tenantImage, setTenantImage] = useState("");
+
+  useEffect(() => {
+    if (user) {
+      setProfileName(user.name || "");
+      setProfilePhone(user.phoneNumber || "");
+      setTenantName(user.tenant?.name || "");
+      setTenantLocation(user.tenant?.location || "");
+      setTenantIsOpen(user.tenant?.isOpen !== false);
+      setTenantImage(user.tenant?.image || "");
+    }
+  }, [user]);
 
   const getHeaders = () => {
     const token = localStorage.getItem("beefood_token");
@@ -159,6 +178,65 @@ const TenantDashboard = () => {
     }
   };
 
+  const handleMenuImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      setNewMenuImage("");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      alert("File yang dipilih harus berupa gambar.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      setNewMenuImage(typeof result === "string" ? result : "");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProfile = async (e) => {
+    e.preventDefault();
+    setActionLoading(true);
+    try {
+      const payload = {
+        name: profileName,
+        phoneNumber: profilePhone,
+        tenantName,
+        tenantLocation,
+        tenantIsOpen,
+        tenantImage
+      };
+      
+      const res = await axios.put(`${API_URL}/profile`, payload, getHeaders());
+      setUser(res.data.user);
+      triggerToast("✅ Profil tenant berhasil diperbarui!");
+    } catch (err) {
+      console.error(err);
+      alert("Gagal memperbarui profil.");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleTenantImageFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      alert("File yang dipilih harus berupa gambar.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result;
+      setTenantImage(typeof result === "string" ? result : "");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const closeSidebar = () => setIsSidebarOpen(false);
 
   const handleLogout = () => {
@@ -183,9 +261,9 @@ const TenantDashboard = () => {
   const completedOrders = orders.filter(o => o.status === "DONE");
 
   // Calculate average rating
-  const avgRating = feedback.length > 0 
+  const avgRating = feedback.length > 0
     ? (feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length).toFixed(1)
-    : "4.5";
+    : "0";
 
   const renderSidebarContent = () => (
     <div className="flex flex-col h-full bg-white">
@@ -234,6 +312,18 @@ const TenantDashboard = () => {
         >
           <MessageSquare className="w-5 h-5" />
           <span>Ulasan Pelanggan ({feedback.length})</span>
+        </button>
+
+        <button
+          onClick={() => { setCurrentTab("profile"); closeSidebar(); }}
+          className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center gap-3 transition-all cursor-pointer ${
+            currentTab === "profile" 
+              ? "bg-orange-500 text-white shadow-lg shadow-orange-500/25 translate-x-1" 
+              : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
+          }`}
+        >
+          <User className="w-5 h-5" />
+          <span>Profil Tenant</span>
         </button>
       </div>
 
@@ -381,13 +471,15 @@ const TenantDashboard = () => {
                               </td>
                               <td className="p-5 font-black text-gray-800">Rp {o.totalPrice.toLocaleString("id-ID")}</td>
                               <td className="p-5">
-                                <span className={`px-3 py-1.5 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 ${
-                                  o.status === "PENDING" ? "bg-amber-50 text-amber-600 border border-amber-100" :
-                                  o.status === "COOKING" ? "bg-blue-50 text-blue-600 border border-blue-100" :
-                                  "bg-green-50 text-green-600 border border-green-100"
+                                <span className={`px-3.5 py-2 rounded-xl text-xs font-black inline-flex items-center gap-1.5 uppercase shadow-sm tracking-wider ${
+                                  o.status === "PENDING" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white animate-pulse" :
+                                  o.status === "COOKING" ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white" :
+                                  "bg-gradient-to-r from-emerald-500 to-green-600 text-white"
                                 }`}>
-                                  {o.status === "PENDING" ? <Clock className="w-3.5 h-3.5 animate-pulse" /> : <ChefHat className="w-3.5 h-3.5" />}
-                                  {o.status === "PENDING" ? "Menunggu" : o.status === "COOKING" ? "Dimasak" : "Siap Ambil"}
+                                  {o.status === "PENDING" && <Clock className="w-3.5 h-3.5 animate-spin" />}
+                                  {o.status === "COOKING" && <ChefHat className="w-3.5 h-3.5" />}
+                                  {o.status === "READY" && <Check className="w-3.5 h-3.5" />}
+                                  {o.status === "PENDING" ? "Menunggu Konfirmasi" : o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
                                 </span>
                               </td>
                               <td className="p-5 text-right">
@@ -424,20 +516,19 @@ const TenantDashboard = () => {
                          <div key={o.id} className="bg-white p-5 rounded-3xl border border-gray-100 shadow-sm flex flex-col gap-4 relative overflow-hidden">
                             <div className="absolute top-0 left-0 w-1 h-full bg-orange-500" />
                             <div className="flex justify-between items-start">
-                               <div>
-                                  <span className="text-xs font-black text-gray-400 uppercase">BEE-{o.id}</span>
-                                  <h4 className="font-black text-lg text-gray-900 mt-1">{o.user?.name}</h4>
-                                  <p className="text-[10px] text-gray-400 font-semibold">NIM: {o.user?.nim || "-"} • Telp: {o.user?.phoneNumber || "-"}</p>
-                               </div>
-                               <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 ${
-                                  o.status === "PENDING" ? "bg-amber-50 text-amber-600" :
-                                  o.status === "COOKING" ? "bg-blue-50 text-blue-600" :
-                                  "bg-green-50 text-green-600"
+                                <div>
+                                   <span className="text-xs font-black text-gray-400 uppercase">BEE-{o.id}</span>
+                                   <h4 className="font-black text-lg text-gray-900 mt-1">{o.user?.name}</h4>
+                                   <p className="text-[10px] text-gray-400 font-semibold">NIM: {o.user?.nim || "-"} • Telp: {o.user?.phoneNumber || "-"}</p>
+                                </div>
+                                <span className={`px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1 text-white shadow-sm ${
+                                  o.status === "PENDING" ? "bg-gradient-to-r from-amber-500 to-orange-500 animate-pulse" :
+                                  o.status === "COOKING" ? "bg-gradient-to-r from-blue-500 to-indigo-600" :
+                                  "bg-gradient-to-r from-emerald-500 to-green-600"
                                 }`}>
-                                  {o.status === "PENDING" ? <Clock className="w-3 h-3" /> : <ChefHat className="w-3 h-3" />}
-                                  {o.status === "PENDING" ? "Menunggu" : o.status === "COOKING" ? "Dimasak" : "Siap Ambil"}
+                                  {o.status === "PENDING" ? "Menunggu Konfirmasi" : o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
                                 </span>
-                            </div>
+                             </div>
                             
                             <div className="bg-gray-50 p-3.5 rounded-2xl border border-gray-100 text-sm">
                                <div className="flex flex-col gap-1.5 mb-2">
@@ -512,63 +603,154 @@ const TenantDashboard = () => {
 
           {/* TAB 2: MANAJEMEN KATALOG & STOK */}
           {currentTab === "stock" && (
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-6xl mx-auto space-y-6">
-              <div className="flex justify-between items-end">
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-6">
+              <div className="mb-4">
                  <h3 className="text-2xl font-black text-gray-900">Manajemen Katalog</h3>
-                 <button 
-                  onClick={() => setShowAddMenuModal(true)}
-                  className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold px-4 py-2.5 rounded-2xl transition-colors cursor-pointer hidden sm:block"
-                 >
-                    + Tambah Menu Hidangan
-                 </button>
+                 <p className="text-xs font-bold text-gray-400">Atur ketersediaan menu dan tambah hidangan baru langsung dari sini</p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {menus.map((s) => (
-                  <div key={s.id} className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group">
-                    <div className="h-40 w-full relative bg-gray-100 overflow-hidden">
-                      <img src={s.image} alt={s.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                      {!s.isAvailable && (
-                        <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
-                          <span className="bg-red-500 text-white font-black text-xs px-3 py-1.5 rounded-lg rotate-12 shadow-lg uppercase tracking-wider">
-                            Habis Terjual
-                          </span>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                
+                {/* FORM TAMBAH HIDANGAN BARU - INLINE (4 cols on lg) */}
+                <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-5 lg:sticky lg:top-24">
+                  <h4 className="text-lg font-black text-gray-900 flex items-center gap-2">
+                    <ChefHat className="w-5 h-5 text-orange-500" /> Tambah Hidangan Baru
+                  </h4>
+
+                  <form onSubmit={handleAddMenu} className="space-y-4">
+                    {/* Menu Name */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nama Hidangan</label>
+                      <input
+                        type="text"
+                        value={newMenuName}
+                        onChange={(e) => setNewMenuName(e.target.value)}
+                        placeholder="Contoh: Nasi Goreng Gila"
+                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                        required
+                      />
+                    </div>
+
+                    {/* Price */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Harga Menu (Rp)</label>
+                      <input
+                        type="number"
+                        value={newMenuPrice}
+                        onChange={(e) => setNewMenuPrice(e.target.value)}
+                        placeholder="Contoh: 15000"
+                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                        required
+                      />
+                    </div>
+
+                    {/* Cook Time */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Estimasi Waktu Masak (Menit)</label>
+                      <input
+                        type="number"
+                        value={newMenuTime}
+                        onChange={(e) => setNewMenuTime(e.target.value)}
+                        placeholder="Contoh: 10"
+                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                        required
+                      />
+                    </div>
+
+                    {/* Menu Image Upload (file) */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Foto Makanan (Opsional)</label>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleMenuImageFileChange}
+                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-xs font-semibold file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                      />
+
+                      {newMenuImage && (
+                        <div className="relative mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-gray-50">
+                          <img
+                            src={newMenuImage}
+                            alt="Preview Foto Menu"
+                            className="w-full h-32 object-cover"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setNewMenuImage("")}
+                            className="absolute top-2 right-2 p-1 bg-white/80 hover:bg-white rounded-full shadow text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
                       )}
                     </div>
-                    <div className="p-5 flex-1 flex flex-col justify-between">
-                      <div>
-                        <h4 className="font-black text-gray-900 text-base leading-snug">{s.name}</h4>
-                        <p className="text-[11px] text-gray-400 font-bold mt-1.5 flex items-center gap-1">
-                          <Clock className="w-3.5 h-3.5 text-orange-500" /> Masak: {s.estimatedTime} menit
-                        </p>
-                        <p className="text-orange-600 font-black text-lg mt-2">Rp {s.price.toLocaleString("id-ID")}</p>
-                      </div>
-                      <div className="mt-5 pt-4 border-t border-gray-50 flex justify-between items-center gap-4">
-                        <button
-                          onClick={() => handleToggleStock(s.id)}
-                          className={`flex-1 flex items-center justify-center gap-2 text-xs font-black px-4 py-2.5 rounded-xl transition-colors cursor-pointer ${
-                            s.isAvailable 
-                              ? "bg-red-50 text-red-600 hover:bg-red-100" 
-                              : "bg-green-50 text-green-600 hover:bg-green-100"
-                          }`}
-                        >
-                          {s.isAvailable ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                          {s.isAvailable ? "Set Habis" : "Set Tersedia"}
-                        </button>
-                      </div>
-                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={actionLoading}
+                      className="w-full mt-2 py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-sm font-black transition-all shadow-lg hover:shadow-orange-500/25 cursor-pointer disabled:opacity-60"
+                    >
+                      {actionLoading ? "Memproses..." : "Tambah Hidangan"}
+                    </button>
+                  </form>
+                </div>
+
+                {/* DAFTAR HIDANGAN AKTIF (8 cols on lg) */}
+                <div className="lg:col-span-8 space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h4 className="text-lg font-black text-gray-900">Daftar Hidangan Aktif</h4>
+                    <span className="text-xs font-bold bg-orange-100 text-orange-600 px-3 py-1 rounded-full">{menus.length} Hidangan</span>
                   </div>
-                ))}
+
+                  {menus.length === 0 ? (
+                    <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
+                      <Store className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                      <h4 className="font-bold text-gray-700 text-base">Belum Ada Menu</h4>
+                      <p className="text-gray-400 text-sm mt-1">Gunakan formulir disamping untuk menambahkan hidangan pertama Anda.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                      {menus.map((s) => (
+                        <div key={s.id} className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group">
+                          <div className="h-40 w-full relative bg-gray-100 overflow-hidden">
+                            <img src={s.image} alt={s.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                            {!s.isAvailable && (
+                              <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
+                                <span className="bg-red-500 text-white font-black text-xs px-3 py-1.5 rounded-lg rotate-12 shadow-lg uppercase tracking-wider">
+                                  Habis Terjual
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="p-5 flex-1 flex flex-col justify-between">
+                            <div>
+                              <h4 className="font-black text-gray-900 text-base leading-snug">{s.name}</h4>
+                              <p className="text-[11px] text-gray-400 font-bold mt-1.5 flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5 text-orange-500" /> Masak: {s.estimatedTime} menit
+                              </p>
+                              <p className="text-orange-600 font-black text-lg mt-2">Rp {s.price.toLocaleString("id-ID")}</p>
+                            </div>
+                            <div className="mt-5 pt-4 border-t border-gray-50 flex justify-between items-center gap-4">
+                              <button
+                                onClick={() => handleToggleStock(s.id)}
+                                className={`flex-1 flex items-center justify-center gap-2 text-xs font-black px-4 py-2.5 rounded-xl transition-colors cursor-pointer ${
+                                  s.isAvailable 
+                                    ? "bg-red-50 text-red-600 hover:bg-red-100" 
+                                    : "bg-green-50 text-green-600 hover:bg-green-100"
+                                }`}
+                              >
+                                {s.isAvailable ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                                {s.isAvailable ? "Set Habis" : "Set Tersedia"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
               </div>
-              
-              {/* Floating Action Button Mobile */}
-              <button 
-                onClick={() => setShowAddMenuModal(true)}
-                className="sm:hidden fixed bottom-6 right-6 w-14 h-14 bg-gray-900 text-white rounded-full shadow-xl flex items-center justify-center text-2xl font-light hover:scale-105 transition-transform z-40 cursor-pointer"
-              >
-                 +
-              </button>
 
             </motion.div>
           )}
@@ -638,103 +820,202 @@ const TenantDashboard = () => {
             </motion.div>
           )}
 
+          {/* TAB 4: PROFIL BISNIS TENANT */}
+          {currentTab === "profile" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-8">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-2xl font-black text-gray-900">Profil Tenant</h3>
+                <span className="text-xs font-black bg-orange-100 text-orange-600 px-3 py-1 rounded-full uppercase tracking-wider">
+                  Pengaturan Akun & Outlet
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* Visual Preview Toko (Kiri) - 5 cols */}
+                <div className="lg:col-span-5 space-y-6">
+                  <div className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm flex flex-col group">
+                    <div className="h-48 w-full relative bg-gray-100 overflow-hidden">
+                      <img 
+                        src={tenantImage || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60"} 
+                        alt={tenantName || "Kantin"} 
+                        className="w-full h-full object-cover transition-transform duration-500" 
+                      />
+                      <span className={`absolute top-3 left-3 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg ${
+                        tenantIsOpen ? "bg-green-500" : "bg-red-500"
+                      }`}>
+                        {tenantIsOpen ? "BUKA" : "TUTUP"}
+                      </span>
+                    </div>
+                    <div className="p-5">
+                      <h4 className="font-black text-gray-900 text-lg leading-tight mb-1">{tenantName || "Nama Kantin Belum Diisi"}</h4>
+                      <p className="text-xs text-gray-500 font-medium flex items-center gap-1 mb-4">
+                        <MapPin className="w-3.5 h-3.5 text-orange-500" /> {tenantLocation || "Lokasi Belum Diisi"}
+                      </p>
+                      
+                      <div className="flex items-center gap-4 border-t border-gray-50 pt-4 text-xs font-bold text-gray-600">
+                        <div className="flex items-center gap-1.5">
+                          <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                          <span>{avgRating} ({feedback.length} Ulasan)</span>
+                        </div>
+                        <div className="w-1.5 h-1.5 rounded-full bg-gray-300" />
+                        <div>{menus.length} Menu Hidangan</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-orange-50 border border-orange-100 rounded-3xl p-5 space-y-2">
+                    <h4 className="font-black text-orange-800 text-sm">Informasi Keaktifan</h4>
+                    <p className="text-xs text-orange-700 font-semibold leading-relaxed">
+                      Status keaktifan toko memengaruhi apakah Mahasiswa dapat melihat menu hidangan Anda di beranda mereka. Pastikan status diubah ke Buka ketika Anda siap melayani pre-order.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Form Edit Profil (Kanan) - 7 cols */}
+                <form onSubmit={handleSaveProfile} className="lg:col-span-7 bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm space-y-6">
+                  <div>
+                    <h4 className="text-sm font-black text-gray-900 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
+                      Profil Pemilik (Tenant Owner)
+                    </h4>
+                    
+                    <div className="space-y-4">
+                      {/* Owner Name */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nama Pemilik</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <User className="h-4.5 w-4.5 text-gray-400" />
+                          </div>
+                          <input
+                            type="text"
+                            value={profileName}
+                            onChange={(e) => setProfileName(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Phone Number */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nomor Telepon</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <Phone className="h-4.5 w-4.5 text-gray-400" />
+                          </div>
+                          <input
+                            type="tel"
+                            value={profilePhone}
+                            onChange={(e) => setProfilePhone(e.target.value)}
+                            placeholder="Contoh: 081298765432"
+                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-black text-gray-900 uppercase tracking-wider mb-4 pb-2 border-b border-gray-100">
+                      Profil Bisnis & Outlet
+                    </h4>
+
+                    <div className="space-y-4">
+                      {/* Kantin Name */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nama Kantin / Outlet</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <Store className="h-4.5 w-4.5 text-gray-400" />
+                          </div>
+                          <input
+                            type="text"
+                            value={tenantName}
+                            onChange={(e) => setTenantName(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Location */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Lokasi Kantin</label>
+                        <div className="relative">
+                          <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <MapPin className="h-4.5 w-4.5 text-gray-400" />
+                          </div>
+                          <input
+                            type="text"
+                            value={tenantLocation}
+                            onChange={(e) => setTenantLocation(e.target.value)}
+                            className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      {/* Store Status Toggle */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Status Toko</label>
+                        <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-2xl border border-gray-200">
+                          <button
+                            type="button"
+                            onClick={() => setTenantIsOpen(true)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                              tenantIsOpen 
+                                ? "bg-green-500 text-white shadow-md shadow-green-500/20" 
+                                : "bg-white text-gray-500 hover:text-gray-900 border border-transparent hover:border-gray-200"
+                            }`}
+                          >
+                            Buka / Aktif
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTenantIsOpen(false)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
+                              !tenantIsOpen 
+                                ? "bg-red-500 text-white shadow-md shadow-red-500/20" 
+                                : "bg-white text-gray-500 hover:text-gray-900 border border-transparent hover:border-gray-200"
+                            }`}
+                          >
+                            Tutup / Libur
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Outlet Image */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Foto Outlet / Kantin</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleTenantImageFileChange}
+                          className="w-full p-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-xs font-semibold file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-sm font-black transition-all shadow-lg hover:shadow-orange-500/25 cursor-pointer disabled:opacity-60"
+                  >
+                    {actionLoading ? "Menyimpan..." : "Simpan Perubahan"}
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          )}
+
         </div>
       </main>
 
-      {/* ADD MENU MODAL */}
-      <AnimatePresence>
-        {showAddMenuModal && (
-          <>
-            <motion.div 
-              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              onClick={() => setShowAddMenuModal(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            />
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="fixed bg-white rounded-3xl p-6 w-full max-w-md shadow-2xl z-50 max-h-[90vh] overflow-y-auto"
-            >
-              <button 
-                onClick={() => setShowAddMenuModal(false)}
-                className="absolute top-5 right-5 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
 
-              <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
-                <ChefHat className="w-5 h-5 text-orange-500" /> Tambah Hidangan Baru
-              </h3>
-
-              <form onSubmit={handleAddMenu} className="space-y-4">
-                {/* Menu Name */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nama Hidangan</label>
-                  <input
-                    type="text"
-                    value={newMenuName}
-                    onChange={(e) => setNewMenuName(e.target.value)}
-                    placeholder="Contoh: Nasi Goreng Gila"
-                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                    required
-                  />
-                </div>
-
-                {/* Price */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Harga Menu (Rp)</label>
-                  <input
-                    type="number"
-                    value={newMenuPrice}
-                    onChange={(e) => setNewMenuPrice(e.target.value)}
-                    placeholder="Contoh: 15000"
-                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                    required
-                  />
-                </div>
-
-                {/* Cook Time */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Estimasi Waktu Masak (Menit)</label>
-                  <input
-                    type="number"
-                    value={newMenuTime}
-                    onChange={(e) => setNewMenuTime(e.target.value)}
-                    placeholder="Contoh: 10"
-                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                    required
-                  />
-                </div>
-
-                {/* Image URL */}
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">URL Foto Makanan (Opsional)</label>
-                  <input
-                    type="url"
-                    value={newMenuImage}
-                    onChange={(e) => setNewMenuImage(e.target.value)}
-                    placeholder="Contoh: https://images.unsplash.com/..."
-                    className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={actionLoading}
-                  className="w-full mt-4 py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-sm font-black transition-all shadow-lg cursor-pointer"
-                >
-                  {actionLoading ? "Memproses..." : "Tambah Menu Hidangan"}
-                </button>
-              </form>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
 
     </div>
   );
 };
 
-export default TenantDashboard;
+export default TenantDashboard;

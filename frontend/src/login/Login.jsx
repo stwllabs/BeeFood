@@ -216,7 +216,7 @@ const Login = () => {
           >
             <div className="mb-6">
               <h2 className="text-2xl font-black text-gray-900">
-                {activeTab === "login" ? "Selamat Datang 👋" : "Buat Akun Baru ✨"}
+                {activeTab === "login" ? "Haloo sobat BeeFood 🍽" : "Yuk jadi bagian dari BeeFooder 🐝"}
               </h2>
               <p className="text-gray-500 text-sm font-medium mt-1">
                 {activeTab === "login" 
@@ -438,4 +438,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default Login;
