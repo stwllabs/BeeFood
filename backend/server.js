@@ -16,7 +16,9 @@ const io = new Server(server, {
 const prisma = new PrismaClient();
 
 app.use(cors());
-app.use(express.json());
+// Base64 foto menu/outlet butuh limit lebih besar (default Express hanya ~100kb)
+app.use(express.json({ limit: "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: "15mb" }));
 
 // Share socket.io instance ke express req context
 app.use((req, res, next) => {
@@ -48,6 +50,56 @@ const authenticateToken = (req, res, next) => {
   });
 };
 
+// Menu kantin Binus (sesuai outlet di kampus)
+const CANTEEN_MENU_CATALOG = {
+  "Kantin Ayam Geprek SASC": [
+    { name: "Ayam Geprek Level 1", price: 15000, estimatedTime: 8, image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&auto=format&fit=crop&q=60" },
+    { name: "Ayam Geprek Level 3", price: 17000, estimatedTime: 10, image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&auto=format&fit=crop&q=60" },
+    { name: "Ayam Geprek Level 5 + Sambal", price: 19000, estimatedTime: 10, image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&auto=format&fit=crop&q=60" },
+    { name: "Nasi Ayam Geprek Spesial", price: 20000, estimatedTime: 12, image: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=500&auto=format&fit=crop&q=60" },
+    { name: "Es Teh Manis", price: 5000, estimatedTime: 2, image: "https://images.unsplash.com/photo-1556675593-ef0e711486e7?w=500&auto=format&fit=crop&q=60" }
+  ],
+  "Kedai Kopi Kampus & Boba": [
+    { name: "Kopi Susu Gula Aren", price: 18000, estimatedTime: 4, image: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500&auto=format&fit=crop&q=60" },
+    { name: "Ice Caramel Latte", price: 22000, estimatedTime: 5, image: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500&auto=format&fit=crop&q=60" },
+    { name: "Brown Sugar Fresh Milk Boba", price: 21000, estimatedTime: 6, image: "https://images.unsplash.com/photo-1541658016709-82535e94bc69?w=500&auto=format&fit=crop&q=60" },
+    { name: "Matcha Latte", price: 20000, estimatedTime: 5, image: "https://images.unsplash.com/photo-1541658016709-82535e94bc69?w=500&auto=format&fit=crop&q=60" },
+    { name: "Thai Tea", price: 16000, estimatedTime: 4, image: "https://images.unsplash.com/photo-1556675593-ef0e711486e7?w=500&auto=format&fit=crop&q=60" }
+  ],
+  "Gorengan Renyah Kampus": [
+    { name: "Tempe Mendoan (Isi 3)", price: 7000, estimatedTime: 5, image: "https://images.unsplash.com/photo-1624371414361-e6e2ed58c242?w=500&auto=format&fit=crop&q=60" },
+    { name: "Tahu Isi (Isi 3)", price: 8000, estimatedTime: 5, image: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&auto=format&fit=crop&q=60" },
+    { name: "Pisang Goreng Keju", price: 10000, estimatedTime: 6, image: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&auto=format&fit=crop&q=60" },
+    { name: "Cireng Bumbu Rujak", price: 6000, estimatedTime: 4, image: "https://images.unsplash.com/photo-1624371414361-e6e2ed58c242?w=500&auto=format&fit=crop&q=60" }
+  ]
+};
+
+const syncCanteenMenus = async () => {
+  try {
+    const tenants = await prisma.tenant.findMany({ include: { menus: true } });
+    for (const tenant of tenants) {
+      const catalog = CANTEEN_MENU_CATALOG[tenant.name];
+      if (!catalog) continue;
+
+      const existingNames = new Set(tenant.menus.map((m) => m.name));
+      const toAdd = catalog.filter((item) => !existingNames.has(item.name));
+
+      if (toAdd.length > 0) {
+        await prisma.menu.createMany({
+          data: toAdd.map((item) => ({
+            ...item,
+            isAvailable: true,
+            tenantId: tenant.id
+          }))
+        });
+        console.log(`Menu kantin disinkronkan untuk: ${tenant.name} (+${toAdd.length})`);
+      }
+    }
+  } catch (err) {
+    console.error("Gagal sinkron menu kantin:", err);
+  }
+};
+
 // --- DATABASE AUTO-SEEDING ---
 const seedDatabase = async () => {
   try {
@@ -62,10 +114,7 @@ const seedDatabase = async () => {
           isOpen: true,
           image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60",
           menus: {
-            create: [
-              { name: "Ayam Geprek Crispy (Lv 1-5)", price: 18000, estimatedTime: 10, isAvailable: true, image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500&auto=format&fit=crop&q=60" },
-              { name: "Ayam Bakar Madu Binus", price: 20000, estimatedTime: 12, isAvailable: true, image: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=500&auto=format&fit=crop&q=60" }
-            ]
+            create: CANTEEN_MENU_CATALOG["Kantin Ayam Geprek SASC"].map((m) => ({ ...m, isAvailable: true }))
           }
         }
       });
@@ -77,10 +126,7 @@ const seedDatabase = async () => {
           isOpen: true,
           image: "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=500&auto=format&fit=crop&q=60",
           menus: {
-            create: [
-              { name: "Ice Caramel Latte", price: 22000, estimatedTime: 5, isAvailable: true, image: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500&auto=format&fit=crop&q=60" },
-              { name: "Matcha Glaze Boba", price: 19000, estimatedTime: 6, isAvailable: true, image: "https://images.unsplash.com/photo-1541658016709-82535e94bc69?w=500&auto=format&fit=crop&q=60" }
-            ]
+            create: CANTEEN_MENU_CATALOG["Kedai Kopi Kampus & Boba"].map((m) => ({ ...m, isAvailable: true }))
           }
         }
       });
@@ -92,9 +138,7 @@ const seedDatabase = async () => {
           isOpen: true,
           image: "https://images.unsplash.com/photo-1589301760014-d929f3979dbc?w=500&auto=format&fit=crop&q=60",
           menus: {
-            create: [
-              { name: "Tempe Mendoan (Isi 3)", price: 7000, estimatedTime: 5, isAvailable: true, image: "https://images.unsplash.com/photo-1624371414361-e6e2ed58c242?w=500&auto=format&fit=crop&q=60" }
-            ]
+            create: CANTEEN_MENU_CATALOG["Gorengan Renyah Kampus"].map((m) => ({ ...m, isAvailable: true }))
           }
         }
       });
@@ -130,12 +174,25 @@ const seedDatabase = async () => {
       });
 
       console.log("Database seeded sukses!");
+    } else {
+      await syncCanteenMenus();
     }
   } catch (err) {
     console.error("Gagal seeding database:", err);
   }
 };
-seedDatabase();
+
+const initDatabase = async () => {
+  try {
+    await prisma.$connect();
+    console.log("Database terhubung (SQLite via Prisma)");
+    await seedDatabase();
+  } catch (err) {
+    console.error("Gagal menghubungkan database:", err);
+    process.exit(1);
+  }
+};
+initDatabase();
 
 // --- API ROUTES ---
 
@@ -337,7 +394,9 @@ app.put('/api/profile', authenticateToken, async (req, res) => {
       if (tenantName) tenantData.name = tenantName;
       if (tenantLocation) tenantData.location = tenantLocation;
       if (tenantIsOpen !== undefined) tenantData.isOpen = !!tenantIsOpen;
-      if (tenantImage !== undefined) tenantData.image = tenantImage;
+      if (tenantImage !== undefined && tenantImage !== null && tenantImage !== "") {
+        tenantData.image = tenantImage;
+      }
 
       await prisma.tenant.update({
         where: { id: updatedUser.tenantId },
@@ -473,16 +532,33 @@ app.post('/api/tenants/:tenantId/menus', authenticateToken, async (req, res) => 
   const tenantId = parseInt(req.params.tenantId);
   const { name, price, estimatedTime, image } = req.body;
 
-  if (!name || !price || !estimatedTime) {
+  if (!name || price === undefined || price === null || !estimatedTime) {
     return res.status(400).json({ error: "Parameter menu tidak lengkap" });
   }
 
+  const priceNum = parseFloat(price);
+  const timeNum = parseInt(estimatedTime, 10);
+  if (Number.isNaN(priceNum) || priceNum <= 0) {
+    return res.status(400).json({ error: "Harga menu tidak valid" });
+  }
+  if (Number.isNaN(timeNum) || timeNum <= 0) {
+    return res.status(400).json({ error: "Estimasi waktu masak tidak valid" });
+  }
+
   try {
+    const owner = await prisma.user.findUnique({ where: { id: req.user.id } });
+    if (!owner?.tenantId) {
+      return res.status(403).json({ error: "Akun tenant tidak terhubung ke outlet" });
+    }
+    if (owner.tenantId !== tenantId) {
+      return res.status(403).json({ error: "Anda tidak boleh menambah menu untuk outlet lain" });
+    }
+
     const newMenu = await prisma.menu.create({
       data: {
         name,
-        price: parseFloat(price),
-        estimatedTime: parseInt(estimatedTime),
+        price: priceNum,
+        estimatedTime: timeNum,
         isAvailable: true,
         image: image || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60",
         tenantId
@@ -491,6 +567,7 @@ app.post('/api/tenants/:tenantId/menus', authenticateToken, async (req, res) => 
 
     res.status(201).json(newMenu);
   } catch (err) {
+    console.error("Gagal menambahkan menu:", err);
     res.status(500).json({ error: "Gagal menambahkan menu baru" });
   }
 });
@@ -776,14 +853,21 @@ app.get('/api/tenants/:tenantId/feedback', async (req, res) => {
       orderBy: { createdAt: 'desc' }
     });
 
-    const formattedFeedback = feedback.map(f => ({
-      id: f.id,
-      rating: f.rating,
-      comment: f.comment,
-      createdAt: f.createdAt,
-      studentName: f.order.user.name,
-      studentAvatar: f.order.user.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=default"
-    }));
+    const formattedFeedback = feedback.map(f => {
+      const items = typeof f.order.items === "string" ? JSON.parse(f.order.items) : f.order.items;
+      const orderSummary = Array.isArray(items)
+        ? items.map((it) => `${it.name} x${it.qty}`).join(", ")
+        : "";
+      return {
+        id: f.id,
+        rating: f.rating,
+        comment: f.comment,
+        createdAt: f.createdAt,
+        studentName: f.order.user.name,
+        studentAvatar: f.order.user.avatar || "https://api.dicebear.com/7.x/adventurer/svg?seed=default",
+        orderSummary
+      };
+    });
 
     res.json(formattedFeedback);
   } catch (err) {

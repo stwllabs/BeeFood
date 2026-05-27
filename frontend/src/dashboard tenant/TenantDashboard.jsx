@@ -1,15 +1,19 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Store, ShoppingBag, Grid, LogOut, Menu, X, Check, ChefHat, Clock, Star, MessageSquare, Plus, CheckCircle2, AlertCircle, User, Phone, MapPin, Image } from "lucide-react";
+import { Store, ShoppingBag, Grid, LogOut, Menu, X, Check, ChefHat, Clock, Star, MessageSquare, Plus, CheckCircle2, User, Phone, MapPin, ChevronLeft } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
+import { compressImageFile } from "../utils/compressImage";
 
 const API_URL = "http://localhost:5000/api";
+
+const getApiErrorMessage = (err, fallback) =>
+  err?.response?.data?.error || err?.message || fallback;
 
 const TenantDashboard = () => {
   const navigate = useNavigate();
   
-  // Tab State: "orders" | "stock" | "reviews" | "profile"
+  // Tab State: "orders" | "stock" | "addMenu" | "reviews" | "profile"
   const [currentTab, setCurrentTab] = useState("orders");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
@@ -19,8 +23,6 @@ const TenantDashboard = () => {
   const [menus, setMenus] = useState([]);
   const [feedback, setFeedback] = useState([]);
   
-  // Form/Modal States
-  const [showAddMenuModal, setShowAddMenuModal] = useState(false);
   const [newMenuName, setNewMenuName] = useState("");
   const [newMenuPrice, setNewMenuPrice] = useState("");
   const [newMenuTime, setNewMenuTime] = useState("");
@@ -153,49 +155,63 @@ const TenantDashboard = () => {
   // Add New Menu
   const handleAddMenu = async (e) => {
     e.preventDefault();
+
+    if (!user?.tenantId) {
+      alert("Akun Anda tidak terhubung ke outlet. Silakan hubungi admin atau daftar ulang sebagai tenant.");
+      return;
+    }
+
+    const priceNum = parseFloat(newMenuPrice);
+    const timeNum = parseInt(newMenuTime, 10);
+    if (!newMenuName.trim()) {
+      alert("Nama hidangan wajib diisi.");
+      return;
+    }
+    if (Number.isNaN(priceNum) || priceNum <= 0) {
+      alert("Harga harus angka lebih dari 0.");
+      return;
+    }
+    if (Number.isNaN(timeNum) || timeNum <= 0) {
+      alert("Estimasi waktu masak harus angka lebih dari 0.");
+      return;
+    }
+
     setActionLoading(true);
     try {
       const response = await axios.post(`${API_URL}/tenants/${user.tenantId}/menus`, {
-        name: newMenuName,
-        price: parseFloat(newMenuPrice),
-        estimatedTime: parseInt(newMenuTime),
-        image: newMenuImage || "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500&auto=format&fit=crop&q=60"
+        name: newMenuName.trim(),
+        price: priceNum,
+        estimatedTime: timeNum,
+        image: newMenuImage || undefined
       }, getHeaders());
 
       setMenus([...menus, response.data]);
-      setShowAddMenuModal(false);
-      
-      // Reset form
       setNewMenuName("");
       setNewMenuPrice("");
       setNewMenuTime("");
       setNewMenuImage("");
-      triggerToast("🎉 Menu hidangan baru berhasil ditambahkan!");
+      setCurrentTab("stock");
+      triggerToast("Menu hidangan baru berhasil ditambahkan!");
     } catch (err) {
-      alert("Gagal menambahkan menu.");
+      alert(getApiErrorMessage(err, "Gagal menambahkan menu. Pastikan backend berjalan dan coba lagi."));
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleMenuImageFileChange = (e) => {
+  const handleMenuImageFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) {
       setNewMenuImage("");
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
-      alert("File yang dipilih harus berupa gambar.");
-      return;
+    try {
+      const compressed = await compressImageFile(file);
+      setNewMenuImage(compressed);
+    } catch {
+      alert("Gagal memproses foto menu. Coba file JPG/PNG lain.");
     }
-
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      setNewMenuImage(typeof result === "string" ? result : "");
-    };
-    reader.readAsDataURL(file);
   };
 
   const handleSaveProfile = async (e) => {
@@ -212,29 +228,31 @@ const TenantDashboard = () => {
       };
       
       const res = await axios.put(`${API_URL}/profile`, payload, getHeaders());
-      setUser(res.data.user);
-      triggerToast("✅ Profil tenant berhasil diperbarui!");
+      const updated = res.data.user;
+      setUser(updated);
+      setTenantName(updated.tenant?.name ?? tenantName);
+      setTenantLocation(updated.tenant?.location ?? tenantLocation);
+      setTenantIsOpen(updated.tenant?.isOpen !== false);
+      setTenantImage(updated.tenant?.image ?? tenantImage);
+      triggerToast("Profil tenant berhasil diperbarui!");
     } catch (err) {
       console.error(err);
-      alert("Gagal memperbarui profil.");
+      alert(getApiErrorMessage(err, "Gagal memperbarui profil. Foto terlalu besar atau backend belum di-restart."));
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleTenantImageFileChange = (e) => {
+  const handleTenantImageFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      alert("File yang dipilih harus berupa gambar.");
-      return;
+    try {
+      const compressed = await compressImageFile(file, 900, 0.75);
+      setTenantImage(compressed);
+      triggerToast("Foto dipilih — tekan Simpan Perubahan untuk menyimpan.");
+    } catch {
+      alert("Gagal memproses foto outlet. Coba file JPG/PNG lain.");
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      setTenantImage(typeof result === "string" ? result : "");
-    };
-    reader.readAsDataURL(file);
   };
 
   const closeSidebar = () => setIsSidebarOpen(false);
@@ -312,18 +330,6 @@ const TenantDashboard = () => {
         >
           <MessageSquare className="w-5 h-5" />
           <span>Ulasan Pelanggan ({feedback.length})</span>
-        </button>
-
-        <button
-          onClick={() => { setCurrentTab("profile"); closeSidebar(); }}
-          className={`w-full p-4 rounded-2xl font-bold text-sm flex items-center gap-3 transition-all cursor-pointer ${
-            currentTab === "profile" 
-              ? "bg-orange-500 text-white shadow-lg shadow-orange-500/25 translate-x-1" 
-              : "text-gray-500 hover:bg-gray-50 hover:text-gray-900"
-          }`}
-        >
-          <User className="w-5 h-5" />
-          <span>Profil Tenant</span>
         </button>
       </div>
 
@@ -406,13 +412,26 @@ const TenantDashboard = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-             <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-lg border border-green-100">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-xs font-bold text-green-700">Toko Buka</span>
+             <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+               tenantIsOpen ? "bg-green-50 border-green-100" : "bg-red-50 border-red-100"
+             }`}>
+                <div className={`w-2 h-2 rounded-full ${tenantIsOpen ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+                <span className={`text-xs font-bold ${tenantIsOpen ? "text-green-700" : "text-red-700"}`}>
+                  {tenantIsOpen ? "Toko Buka" : "Toko Tutup"}
+                </span>
              </div>
-             <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-black border-2 border-white shadow-sm">
-                {user?.name?.charAt(0) || "T"}
-             </div>
+             <button
+               type="button"
+               onClick={() => setCurrentTab("profile")}
+               title="Profil & pengaturan toko"
+               className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center text-orange-600 font-black border-2 border-white shadow-sm hover:ring-2 hover:ring-orange-200 transition-all cursor-pointer overflow-hidden"
+             >
+               {tenantImage ? (
+                 <img src={tenantImage} alt="" className="w-full h-full object-cover" />
+               ) : (
+                 user?.name?.charAt(0) || "T"
+               )}
+             </button>
           </div>
         </header>
 
@@ -601,157 +620,151 @@ const TenantDashboard = () => {
             </motion.div>
           )}
 
-          {/* TAB 2: MANAJEMEN KATALOG & STOK */}
+          {/* TAB 2: DAFTAR HIDANGAN AKTIF */}
           {currentTab === "stock" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-7xl mx-auto space-y-6">
-              <div className="mb-4">
-                 <h3 className="text-2xl font-black text-gray-900">Manajemen Katalog</h3>
-                 <p className="text-xs font-bold text-gray-400">Atur ketersediaan menu dan tambah hidangan baru langsung dari sini</p>
+              <div className="flex justify-between items-center gap-4">
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900">Daftar Hidangan Aktif</h3>
+                  <p className="text-xs font-bold text-gray-400 mt-1">Kelola stok menu yang tampil di aplikasi mahasiswa</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab("addMenu")}
+                  className="flex items-center gap-2 bg-orange-500 hover:bg-orange-600 text-white font-black text-sm px-5 py-3 rounded-2xl shadow-lg shadow-orange-500/25 transition-colors cursor-pointer shrink-0"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="hidden sm:inline">Tambah Hidangan</span>
+                </button>
               </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-                
-                {/* FORM TAMBAH HIDANGAN BARU - INLINE (4 cols on lg) */}
-                <div className="lg:col-span-4 bg-white p-6 rounded-3xl border border-gray-100 shadow-sm space-y-5 lg:sticky lg:top-24">
-                  <h4 className="text-lg font-black text-gray-900 flex items-center gap-2">
-                    <ChefHat className="w-5 h-5 text-orange-500" /> Tambah Hidangan Baru
-                  </h4>
-
-                  <form onSubmit={handleAddMenu} className="space-y-4">
-                    {/* Menu Name */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nama Hidangan</label>
-                      <input
-                        type="text"
-                        value={newMenuName}
-                        onChange={(e) => setNewMenuName(e.target.value)}
-                        placeholder="Contoh: Nasi Goreng Gila"
-                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                        required
-                      />
-                    </div>
-
-                    {/* Price */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Harga Menu (Rp)</label>
-                      <input
-                        type="number"
-                        value={newMenuPrice}
-                        onChange={(e) => setNewMenuPrice(e.target.value)}
-                        placeholder="Contoh: 15000"
-                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                        required
-                      />
-                    </div>
-
-                    {/* Cook Time */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Estimasi Waktu Masak (Menit)</label>
-                      <input
-                        type="number"
-                        value={newMenuTime}
-                        onChange={(e) => setNewMenuTime(e.target.value)}
-                        placeholder="Contoh: 10"
-                        className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-sm font-semibold"
-                        required
-                      />
-                    </div>
-
-                    {/* Menu Image Upload (file) */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Foto Makanan (Opsional)</label>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleMenuImageFileChange}
-                        className="w-full p-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-xs font-semibold file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
-                      />
-
-                      {newMenuImage && (
-                        <div className="relative mt-2 rounded-2xl overflow-hidden border border-gray-100 bg-gray-50">
-                          <img
-                            src={newMenuImage}
-                            alt="Preview Foto Menu"
-                            className="w-full h-32 object-cover"
-                          />
+              {menus.length === 0 ? (
+                <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
+                  <Store className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <h4 className="font-bold text-gray-700 text-base">Belum Ada Menu</h4>
+                  <p className="text-gray-400 text-sm mt-1 mb-6">Tekan tombol tambah untuk memasukkan hidangan pertama.</p>
+                  <button
+                    type="button"
+                    onClick={() => setCurrentTab("addMenu")}
+                    className="inline-flex items-center gap-2 bg-orange-500 text-white font-black text-sm px-5 py-3 rounded-2xl"
+                  >
+                    <Plus className="w-5 h-5" /> Tambah Hidangan Baru
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                  {menus.map((s) => (
+                    <div key={s.id} className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group">
+                      <div className="h-40 w-full relative bg-gray-100 overflow-hidden">
+                        <img src={s.image} alt={s.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                        {!s.isAvailable && (
+                          <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
+                            <span className="bg-red-500 text-white font-black text-xs px-3 py-1.5 rounded-lg uppercase tracking-wider">
+                              Habis
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="p-5 flex-1 flex flex-col justify-between">
+                        <div>
+                          <h4 className="font-black text-gray-900 text-base leading-snug">{s.name}</h4>
+                          <p className="text-[11px] text-gray-400 font-bold mt-1.5 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5 text-orange-500" /> {s.estimatedTime} menit
+                          </p>
+                          <p className="text-orange-600 font-black text-lg mt-2">Rp {s.price.toLocaleString("id-ID")}</p>
+                        </div>
+                        <div className="mt-5 pt-4 border-t border-gray-50">
                           <button
-                            type="button"
-                            onClick={() => setNewMenuImage("")}
-                            className="absolute top-2 right-2 p-1 bg-white/80 hover:bg-white rounded-full shadow text-gray-500 hover:text-gray-900 transition-colors cursor-pointer"
+                            onClick={() => handleToggleStock(s.id)}
+                            className={`w-full flex items-center justify-center gap-2 text-xs font-black px-4 py-2.5 rounded-xl transition-colors cursor-pointer ${
+                              s.isAvailable
+                                ? "bg-red-50 text-red-600 hover:bg-red-100"
+                                : "bg-green-50 text-green-600 hover:bg-green-100"
+                            }`}
                           >
-                            <X className="w-4 h-4" />
+                            {s.isAvailable ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                            {s.isAvailable ? "Set Habis" : "Set Tersedia"}
                           </button>
                         </div>
-                      )}
+                      </div>
                     </div>
-
-                    <button
-                      type="submit"
-                      disabled={actionLoading}
-                      className="w-full mt-2 py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-sm font-black transition-all shadow-lg hover:shadow-orange-500/25 cursor-pointer disabled:opacity-60"
-                    >
-                      {actionLoading ? "Memproses..." : "Tambah Hidangan"}
-                    </button>
-                  </form>
+                  ))}
                 </div>
+              )}
+            </motion.div>
+          )}
 
-                {/* DAFTAR HIDANGAN AKTIF (8 cols on lg) */}
-                <div className="lg:col-span-8 space-y-4">
-                  <div className="flex justify-between items-center">
-                    <h4 className="text-lg font-black text-gray-900">Daftar Hidangan Aktif</h4>
-                    <span className="text-xs font-bold bg-orange-100 text-orange-600 px-3 py-1 rounded-full">{menus.length} Hidangan</span>
+          {/* TAB: TAMBAH HIDANGAN BARU (halaman terpisah) */}
+          {currentTab === "addMenu" && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-xl mx-auto">
+              <button
+                type="button"
+                onClick={() => setCurrentTab("stock")}
+                className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-orange-600 mb-6 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" /> Kembali ke Daftar Menu
+              </button>
+
+              <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm space-y-5">
+                <h3 className="text-xl font-black text-gray-900 flex items-center gap-2">
+                  <Plus className="w-5 h-5 text-orange-500" /> Tambah Hidangan Baru
+                </h3>
+
+                <form onSubmit={handleAddMenu} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Nama Hidangan</label>
+                    <input
+                      type="text"
+                      value={newMenuName}
+                      onChange={(e) => setNewMenuName(e.target.value)}
+                      placeholder="Contoh: Nasi Goreng Spesial"
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 text-sm font-semibold"
+                      required
+                    />
                   </div>
-
-                  {menus.length === 0 ? (
-                    <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
-                      <Store className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                      <h4 className="font-bold text-gray-700 text-base">Belum Ada Menu</h4>
-                      <p className="text-gray-400 text-sm mt-1">Gunakan formulir disamping untuk menambahkan hidangan pertama Anda.</p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                      {menus.map((s) => (
-                        <div key={s.id} className="bg-white border border-gray-100 rounded-3xl overflow-hidden shadow-sm hover:shadow-md transition-all flex flex-col group">
-                          <div className="h-40 w-full relative bg-gray-100 overflow-hidden">
-                            <img src={s.image} alt={s.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                            {!s.isAvailable && (
-                              <div className="absolute inset-0 bg-white/60 backdrop-blur-sm flex items-center justify-center">
-                                <span className="bg-red-500 text-white font-black text-xs px-3 py-1.5 rounded-lg rotate-12 shadow-lg uppercase tracking-wider">
-                                  Habis Terjual
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="p-5 flex-1 flex flex-col justify-between">
-                            <div>
-                              <h4 className="font-black text-gray-900 text-base leading-snug">{s.name}</h4>
-                              <p className="text-[11px] text-gray-400 font-bold mt-1.5 flex items-center gap-1">
-                                <Clock className="w-3.5 h-3.5 text-orange-500" /> Masak: {s.estimatedTime} menit
-                              </p>
-                              <p className="text-orange-600 font-black text-lg mt-2">Rp {s.price.toLocaleString("id-ID")}</p>
-                            </div>
-                            <div className="mt-5 pt-4 border-t border-gray-50 flex justify-between items-center gap-4">
-                              <button
-                                onClick={() => handleToggleStock(s.id)}
-                                className={`flex-1 flex items-center justify-center gap-2 text-xs font-black px-4 py-2.5 rounded-xl transition-colors cursor-pointer ${
-                                  s.isAvailable 
-                                    ? "bg-red-50 text-red-600 hover:bg-red-100" 
-                                    : "bg-green-50 text-green-600 hover:bg-green-100"
-                                }`}
-                              >
-                                {s.isAvailable ? <X className="w-4 h-4" /> : <Check className="w-4 h-4" />}
-                                {s.isAvailable ? "Set Habis" : "Set Tersedia"}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Harga (Rp)</label>
+                    <input
+                      type="number"
+                      value={newMenuPrice}
+                      onChange={(e) => setNewMenuPrice(e.target.value)}
+                      placeholder="15000"
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 text-sm font-semibold"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Estimasi Masak (menit)</label>
+                    <input
+                      type="number"
+                      value={newMenuTime}
+                      onChange={(e) => setNewMenuTime(e.target.value)}
+                      placeholder="10"
+                      className="w-full p-3.5 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 text-sm font-semibold"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Foto (opsional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleMenuImageFileChange}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-2xl text-xs font-semibold file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:font-black file:bg-orange-50 file:text-orange-700"
+                    />
+                    {newMenuImage && (
+                      <img src={newMenuImage} alt="Preview" className="w-full h-36 object-cover rounded-2xl mt-2" />
+                    )}
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={actionLoading}
+                    className="w-full py-4 bg-orange-500 hover:bg-orange-600 text-white rounded-2xl text-sm font-black disabled:opacity-60"
+                  >
+                    {actionLoading ? "Menyimpan..." : "Simpan Hidangan"}
+                  </button>
+                </form>
               </div>
-
             </motion.div>
           )}
 
@@ -771,10 +784,11 @@ const TenantDashboard = () => {
                 </div>
                 <div>
                   <h4 className="font-black text-gray-900 text-lg flex items-center gap-1.5">
-                    Kantin Ayam Geprek SASC <Star className="w-5 h-5 text-amber-500 fill-amber-500 animate-pulse" />
+                    {user?.tenant?.name || tenantName || "Outlet Anda"}
+                    <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
                   </h4>
                   <p className="text-sm text-gray-500 mt-1 font-semibold leading-relaxed">
-                    Ulasan ini ditulis secara riil oleh Mahasiswa Binus setelah mengambil pesanan pre-order mereka di lokasi Anda.
+                    Ulasan dari mahasiswa yang sudah mengambil pesanan di outlet Anda.
                   </p>
                 </div>
               </div>
@@ -808,8 +822,13 @@ const TenantDashboard = () => {
                           ))}
                         </div>
 
+                        {f.orderSummary && (
+                          <p className="text-[11px] text-gray-400 font-bold mt-1">
+                            Pesanan: {f.orderSummary}
+                          </p>
+                        )}
                         <p className="text-sm text-gray-600 pt-1 leading-relaxed font-semibold">
-                          "{f.comment}"
+                          {f.comment ? `"${f.comment}"` : "(Tanpa komentar)"}
                         </p>
                       </div>
                     </div>
@@ -823,10 +842,17 @@ const TenantDashboard = () => {
           {/* TAB 4: PROFIL BISNIS TENANT */}
           {currentTab === "profile" && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-4xl mx-auto space-y-8">
+              <button
+                type="button"
+                onClick={() => setCurrentTab("orders")}
+                className="flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-orange-600 cursor-pointer"
+              >
+                <ChevronLeft className="w-4 h-4" /> Kembali ke Antrean
+              </button>
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-2xl font-black text-gray-900">Profil Tenant</h3>
+                <h3 className="text-2xl font-black text-gray-900">Profil & Pengaturan Toko</h3>
                 <span className="text-xs font-black bg-orange-100 text-orange-600 px-3 py-1 rounded-full uppercase tracking-wider">
-                  Pengaturan Akun & Outlet
+                  Akun Tenant
                 </span>
               </div>
 
@@ -989,10 +1015,13 @@ const TenantDashboard = () => {
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">Foto Outlet / Kantin</label>
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/jpeg,image/png,image/webp"
                           onChange={handleTenantImageFileChange}
                           className="w-full p-3 bg-gray-50 border border-gray-200 rounded-2xl outline-none focus:border-orange-500 focus:bg-white transition-all text-xs font-semibold file:mr-4 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-black file:bg-orange-50 file:text-orange-700 hover:file:bg-orange-100"
                         />
+                        <p className="text-[11px] text-gray-400 font-semibold">
+                          Pilih foto lalu klik <strong>Simpan Perubahan</strong> di bawah. Gambar salad adalah foto default sistem.
+                        </p>
                       </div>
                     </div>
                   </div>

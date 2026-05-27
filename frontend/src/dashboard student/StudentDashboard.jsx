@@ -1,13 +1,26 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Search, Wallet, ChevronLeft, MapPin, Star, ShoppingBag, X, ChefHat, Clock, User, Phone, FileText, CheckCircle2, History, MessageSquare, LogOut, Upload, UserCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 
 const API_URL = "http://localhost:5000/api";
 
+const getOrderStatusLabel = (status) => {
+  if (status === "PENDING") return "Menunggu";
+  if (status === "COOKING") return "Dimasak";
+  return "Siap diambil";
+};
+
+const getOrderStatusClass = (status) => {
+  if (status === "PENDING") return "bg-blue-50 text-blue-700 border-blue-100";
+  if (status === "COOKING") return "bg-orange-50 text-orange-700 border-orange-100";
+  return "bg-green-50 text-green-700 border-green-100";
+};
+
 const StudentDashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   
   // State Utama
   const [user, setUser] = useState(null);
@@ -29,15 +42,8 @@ const StudentDashboard = () => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [selectedOrderForFeedback, setSelectedOrderForFeedback] = useState(null);
 
-  // Payment & Wallet
+  // Payment
   const [paymentMethod, setPaymentMethod] = useState("BEEPAY"); // BEEPAY | QRIS
-  const [showWalletModal, setShowWalletModal] = useState(false);
-  const [topUpAmount, setTopUpAmount] = useState("");
-  const [topUpLoading, setTopUpLoading] = useState(false);
-  const [walletHistory, setWalletHistory] = useState([]);
-  const [showTopUpQrisModal, setShowTopUpQrisModal] = useState(false);
-  const [pendingTopUpAmount, setPendingTopUpAmount] = useState(0);
-  const [showCheckoutQrisModal, setShowCheckoutQrisModal] = useState(false);
   
   // Profile Form State
   const [profileName, setProfileName] = useState("");
@@ -122,57 +128,21 @@ const StudentDashboard = () => {
     setTimeout(() => setSuccessToast(""), 3500);
   };
 
-  const fetchWalletHistory = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/wallet/history`, getHeaders());
-      setWalletHistory(res.data || []);
-    } catch (err) {
-      console.error("Gagal memuat history wallet:", err);
+  useEffect(() => {
+    if (location.state?.orderSuccess) {
+      setActiveTab(location.state.activeTab || "orders");
+      if (location.state.clearCart) {
+        setCart({});
+        setShowMobileCart(false);
+      }
+      triggerToast(location.state.message || "Pre-order berhasil!");
+      navigate("/student/dashboard", { replace: true, state: {} });
+      axios.get(`${API_URL}/orders/user`, getHeaders()).then((res) => setOrders(res.data));
+      axios.get(`${API_URL}/profile`, getHeaders()).then((res) => setUser(res.data));
     }
-  };
+  }, [location.state]);
 
-  const openWalletModal = async () => {
-    setShowWalletModal(true);
-    await fetchWalletHistory();
-  };
-
-  const handleTopUpClick = () => {
-    const amountNum = Number(topUpAmount);
-    if (!amountNum || amountNum <= 0) {
-      alert("Masukkan nominal top up yang valid.");
-      return;
-    }
-    setPendingTopUpAmount(amountNum);
-    setShowWalletModal(false);
-    setShowTopUpQrisModal(true);
-  };
-
-  const handleConfirmTopUp = async () => {
-    setTopUpLoading(true);
-    try {
-      await axios.post(
-        `${API_URL}/wallet/topup`,
-        { amount: pendingTopUpAmount, method: "QRIS" },
-        getHeaders()
-      );
-
-      setTopUpAmount("");
-      setPendingTopUpAmount(0);
-      setShowTopUpQrisModal(false);
-      setShowWalletModal(true);
-      await fetchWalletHistory();
-
-      // Refresh balance dari backend agar konsisten
-      const profileRes = await axios.get(`${API_URL}/profile`, getHeaders());
-      setUser(profileRes.data);
-
-      triggerToast("✅ Top up BeePay berhasil!");
-    } catch (err) {
-      alert("Gagal melakukan top up.");
-    } finally {
-      setTopUpLoading(false);
-    }
-  };
+  const goToBeePay = () => navigate("/student/beepay");
 
   // Profile Save
   const handleSaveProfile = async (e) => {
@@ -220,30 +190,21 @@ const StudentDashboard = () => {
 
   const totalItems = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
 
-  // Search Engine: Matches tenant names OR menu names
-  const filteredTenants = tenants.filter(t => {
-    const matchesTenantName = t.name.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesMenuName = t.menus.some(m => m.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    const matchesSearch = matchesTenantName || matchesMenuName;
-    const matchesCategory = selectedCategory === "Semua" || t.category === selectedCategory || t.name === "Kantin Ayam Geprek SASC" && selectedCategory === "Makanan Berat" || t.name === "Kedai Kopi Kampus & Boba" && selectedCategory === "Minuman / Coffee" || t.name === "Gorengan Renyah Kampus" && selectedCategory === "Camilan";
-    return matchesSearch && matchesCategory;
-  });
-
   const queryLower = searchQuery.trim().toLowerCase();
 
-  // When searching, show matching menus directly (tanpa perlu pilih tenant dulu).
-  // If tenant name matches, show all menus from that tenant.
-  // Otherwise, show only menus that match the query.
-  const matchingMenus = searchQuery
-    ? filteredTenants.flatMap((t) => {
-        const tenantMatches = t.name.toLowerCase().includes(queryLower);
-        if (tenantMatches) {
-          return t.menus.map((m) => ({ ...m, tenantId: t.id, tenantName: t.name }));
-        }
-        return t.menus
+  // Search hanya berdasarkan nama menu (bukan nama tenant)
+  const filteredTenants = tenants.filter(t => {
+    const matchesMenuName = !queryLower || t.menus.some(m => m.name.toLowerCase().includes(queryLower));
+    const matchesCategory = selectedCategory === "Semua" || t.category === selectedCategory || t.name === "Kantin Ayam Geprek SASC" && selectedCategory === "Makanan Berat" || t.name === "Kedai Kopi Kampus & Boba" && selectedCategory === "Minuman / Coffee" || t.name === "Gorengan Renyah Kampus" && selectedCategory === "Camilan";
+    return matchesMenuName && matchesCategory;
+  });
+
+  const matchingMenus = queryLower
+    ? filteredTenants.flatMap((t) =>
+        t.menus
           .filter((m) => m.name.toLowerCase().includes(queryLower))
-          .map((m) => ({ ...m, tenantId: t.id, tenantName: t.name }));
-      })
+          .map((m) => ({ ...m, tenantId: t.id, tenantName: t.name }))
+      )
     : [];
 
   // If user adds from search results, force cart to 1 tenant only.
@@ -280,13 +241,14 @@ const StudentDashboard = () => {
     }
 
     if (paymentMethod === "BEEPAY" && user.balance < totalBelanja) {
-      // BeePay kurang -> arahkan untuk top up
-      await openWalletModal();
+      goToBeePay();
       return;
     }
 
     if (paymentMethod === "QRIS") {
-      setShowCheckoutQrisModal(true);
+      navigate("/student/checkout/qris", {
+        state: { cart, selectedTenant, totalBelanja, allGlobalMenus },
+      });
       return;
     }
 
@@ -326,49 +288,6 @@ const StudentDashboard = () => {
       triggerToast("🎉 Pre-order berhasil!");
     } catch (err) {
       alert("Gagal memproses checkout.");
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleConfirmCheckout = async () => {
-    setActionLoading(true);
-    try {
-      const itemsList = Object.keys(cart).map(id => {
-        const item = allGlobalMenus.find(m => m.id === parseInt(id));
-        return {
-          menuId: item.id,
-          name: item.name,
-          qty: cart[id],
-          price: item.price
-        };
-      });
-
-      const orderPayload = {
-        tenantId: selectedTenant.id,
-        totalPrice: totalBelanja,
-        items: itemsList,
-        paymentMethod: "QRIS"
-      };
-
-      await axios.post(`${API_URL}/orders`, orderPayload, getHeaders());
-
-      // Refresh balance dari backend agar konsisten
-      const profileRes = await axios.get(`${API_URL}/profile`, getHeaders());
-      setUser(profileRes.data);
-
-      setCart({});
-      setShowMobileCart(false);
-      setShowCheckoutQrisModal(false);
-      
-      // Refetch orders list & go to orders tab
-      const ordersRes = await axios.get(`${API_URL}/orders/user`, getHeaders());
-      setOrders(ordersRes.data);
-      setActiveTab("orders");
-      
-      triggerToast("🎉 Pre-order berhasil (QRIS)!");
-    } catch (err) {
-      alert("Gagal memproses checkout QRIS.");
     } finally {
       setActionLoading(false);
     }
@@ -474,16 +393,7 @@ const StudentDashboard = () => {
 
       {/* Payment Method */}
       <div className="pt-4 border-t border-gray-100 mt-4">
-        <div className="flex justify-between items-center mb-3">
-          <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Metode Pembayaran</span>
-          <button
-            type="button"
-            onClick={openWalletModal}
-            className="text-xs font-bold text-orange-600 hover:text-orange-700 transition-colors"
-          >
-            Lihat History
-          </button>
-        </div>
+        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider block mb-3">Metode Pembayaran</span>
 
         <div className="grid grid-cols-2 gap-2">
           <button
@@ -517,7 +427,7 @@ const StudentDashboard = () => {
             </p>
             <button
               type="button"
-              onClick={openWalletModal}
+              onClick={goToBeePay}
               className="mt-2 w-full py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-black transition-colors cursor-pointer"
             >
               Top Up BeePay
@@ -605,7 +515,7 @@ const StudentDashboard = () => {
 
           {/* Saldo BeePay */}
           <button
-            onClick={openWalletModal}
+            onClick={goToBeePay}
             className="bg-orange-50 hover:bg-orange-100/80 px-4 py-2 rounded-2xl border border-orange-100 flex items-center gap-3 cursor-pointer transition-colors text-left outline-none"
           >
             <div className="bg-white p-1.5 rounded-lg shadow-sm">
@@ -710,6 +620,9 @@ const StudentDashboard = () => {
                           <span className="text-[10px] font-black uppercase tracking-widest text-orange-700">Pre-Order Cepat</span>
                         </div>
                         
+                        <p className="text-orange-600 font-black text-sm md:text-base mb-2">
+                          Selamat datang, {user?.name?.split(" ")[0] || "Mahasiswa"}! 👋
+                        </p>
                         <h2 className="text-3xl md:text-5xl font-black mb-4 leading-[1.1] tracking-tight text-gray-900">
                           Pesan Sekarang,<br/>
                           <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-500 to-amber-500">Ambil Nanti!</span>
@@ -732,7 +645,7 @@ const StudentDashboard = () => {
                         type="text" 
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Cari restoran (Geprek, Kopi) atau nama menu (Ayam, Latte, Boba)..." 
+                        placeholder="Cari nama menu (Ayam Geprek, Latte, Boba, Mendoan)..." 
                         className="w-full bg-white py-4 pl-12 pr-4 rounded-2xl border border-gray-200 outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition-all font-medium text-sm shadow-sm"
                       />
                     </div>
@@ -1023,17 +936,11 @@ const StudentDashboard = () => {
                           }`} />
 
                           <div className="flex-1">
-                            <div className="flex flex-wrap items-center gap-3 mb-2.5">
-                              <span className={`text-xs md:text-sm font-black px-3.5 py-1.5 rounded-xl text-white uppercase tracking-wider shadow-sm inline-flex items-center gap-1.5 ${
-                                o.status === "PENDING" ? "bg-gradient-to-r from-blue-500 to-indigo-600 animate-pulse" :
-                                o.status === "COOKING" ? "bg-gradient-to-r from-orange-500 to-amber-500" : 
-                                "bg-gradient-to-r from-emerald-500 to-green-600"
-                              }`}>
-                                {o.status === "PENDING" && <span className="flex h-2 w-2 rounded-full bg-white animate-ping" />}
-                                {o.status === "PENDING" ? "Sedang Menunggu Konfirmasi" :
-                                 o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${getOrderStatusClass(o.status)}`}>
+                                {getOrderStatusLabel(o.status)}
                               </span>
-                              <span className="text-xs font-mono font-bold text-gray-400">Order ID: BEE-{o.id}</span>
+                              <span className="text-[10px] font-mono font-semibold text-gray-400">BEE-{o.id}</span>
                             </div>
                             
                             {/* Detail Menu List */}
@@ -1194,121 +1101,6 @@ const StudentDashboard = () => {
                 <X className="w-5 h-5" />
               </button>
               {renderCartContent()}
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* WALLET TOP UP & HISTORY MODAL */}
-      <AnimatePresence>
-        {showWalletModal && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowWalletModal(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
-            />
-
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              onClick={(e) => e.stopPropagation()}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl p-6 w-full max-w-lg shadow-2xl relative max-h-[90vh] overflow-y-auto z-50"
-            >
-              <button
-                onClick={() => setShowWalletModal(false)}
-                className="absolute top-5 right-5 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <h3 className="text-xl font-black text-gray-900 mb-2 flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-orange-500" /> BeePay Wallet
-              </h3>
-              <p className="text-sm text-gray-500 font-semibold mb-6">
-                Top up via QRIS dan lihat riwayat pengeluaran BeePay.
-              </p>
-
-              {/* Top Up */}
-              <section className="bg-gray-50 border border-gray-100 rounded-3xl p-4 mb-5">
-                <h4 className="text-sm font-black text-gray-900 mb-3">Top Up BeePay</h4>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider block">
-                    Nominal Top Up (Rp)
-                  </label>
-                  <input
-                    type="number"
-                    value={topUpAmount}
-                    onChange={(e) => setTopUpAmount(e.target.value)}
-                    placeholder="Contoh: 50000"
-                    className="w-full p-3.5 bg-white border border-gray-200 rounded-2xl outline-none focus:border-orange-500 transition-all text-sm font-semibold"
-                  />
-                  <div className="text-[11px] text-gray-400 font-bold">
-                    Metode: QRIS (Simulasi) - menambah saldo BeePay.
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleTopUpClick}
-                    disabled={topUpLoading}
-                    className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-black text-sm rounded-2xl shadow-lg shadow-orange-500/25 transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {topUpLoading ? "Memproses..." : "Konfirmasi Top Up"}
-                  </button>
-                </div>
-              </section>
-
-              {/* History */}
-              <section>
-                <div className="flex justify-between items-center mb-3">
-                  <h4 className="text-sm font-black text-gray-900">History Balance</h4>
-                  <span className="text-xs font-bold text-orange-600 bg-orange-50 border border-orange-100 px-3 py-1 rounded-full">
-                    {walletHistory.length} transaksi
-                  </span>
-                </div>
-
-                {walletHistory.length === 0 ? (
-                  <div className="bg-white border border-gray-100 p-8 rounded-3xl text-center text-gray-400">
-                    <p className="font-semibold text-sm">Belum ada riwayat top up atau pengeluaran.</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {walletHistory.map((t) => {
-                      const isTopUp = t.type === "TOP_UP";
-                      const amountSigned = isTopUp ? t.amount : -t.amount;
-                      const label = isTopUp ? "Top Up" : "Pengeluaran BeePay";
-                      return (
-                        <div
-                          key={t.id}
-                          className="bg-white border border-gray-100 rounded-3xl p-4 flex items-start justify-between gap-4"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className={`text-xs font-black px-2 py-0.5 rounded-lg border font-mono ${isTopUp ? "bg-emerald-50 text-emerald-700 border-emerald-100" : "bg-amber-50 text-amber-700 border-amber-100"}`}>
-                                {label}
-                              </span>
-                              <span className="text-[11px] text-gray-400 font-bold">{t.method}</span>
-                            </div>
-                            <div className="text-xs text-gray-500 font-bold mt-1 truncate">
-                              {t.description || "-"}
-                            </div>
-                            <div className="text-[11px] text-gray-400 font-bold mt-1">
-                              {new Date(t.createdAt).toLocaleString("id-ID")}
-                            </div>
-                          </div>
-
-                          <div className={`text-right shrink-0 font-black ${isTopUp ? "text-emerald-600" : "text-orange-600"}`}>
-                            {amountSigned >= 0 ? "+" : "-"} Rp {Math.abs(amountSigned).toLocaleString("id-ID")}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </section>
             </motion.div>
           </>
         )}
@@ -1500,151 +1292,6 @@ const StudentDashboard = () => {
                   </button>
                 </form>
               </motion.div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* WALLET TOP UP QRIS BARCODE MODAL */}
-      <AnimatePresence>
-        {showTopUpQrisModal && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => {
-                setShowTopUpQrisModal(false);
-                setShowWalletModal(true);
-              }}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            />
-
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl z-50 text-center"
-            >
-              <button
-                onClick={() => {
-                  setShowTopUpQrisModal(false);
-                  setShowWalletModal(true);
-                }}
-                className="absolute top-5 right-5 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <h3 className="text-xl font-black text-gray-900 mb-2 flex items-center justify-center gap-2">
-                <Wallet className="w-5 h-5 text-orange-500" /> QRIS Top Up
-              </h3>
-              <p className="text-xs text-gray-400 font-bold mb-5">
-                Pindai QRIS untuk menambah saldo BeePay
-              </p>
-
-              <div className="bg-white border-2 border-orange-100 rounded-3xl p-4 inline-block mb-4 shadow-sm">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=BEEFOOD-TOPUP-Rp${pendingTopUpAmount}&color=ea580c`}
-                  alt="QRIS Barcode"
-                  className="w-48 h-48 mx-auto"
-                />
-              </div>
-
-              <div className="bg-orange-50/50 border border-orange-100/50 rounded-2xl p-3.5 mb-6">
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Nominal Transfer</span>
-                <span className="text-xl font-black text-orange-600">
-                  Rp {pendingTopUpAmount.toLocaleString("id-ID")}
-                </span>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    setShowTopUpQrisModal(false);
-                    setShowWalletModal(true);
-                  }}
-                  className="flex-1 py-3 border border-gray-200 hover:border-gray-300 text-gray-500 font-black text-xs rounded-2xl transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleConfirmTopUp}
-                  disabled={topUpLoading}
-                  className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] cursor-pointer disabled:opacity-60"
-                >
-                  {topUpLoading ? "Memproses..." : "Saya Sudah Transfer"}
-                </button>
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
-      {/* CHECKOUT QRIS BARCODE MODAL */}
-      <AnimatePresence>
-        {showCheckoutQrisModal && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={() => setShowCheckoutQrisModal(false)}
-              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            />
-
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl z-50 text-center"
-            >
-              <button
-                onClick={() => setShowCheckoutQrisModal(false)}
-                className="absolute top-5 right-5 p-1.5 bg-gray-100 rounded-full text-gray-500 hover:text-gray-900 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-
-              <h3 className="text-xl font-black text-gray-900 mb-2 flex items-center justify-center gap-2">
-                <ShoppingBag className="w-5 h-5 text-orange-500" /> Bayar Pre-Order QRIS
-              </h3>
-              <p className="text-xs text-gray-400 font-bold mb-5">
-                Scan kode QRIS di bawah ini untuk menyelesaikan pesanan
-              </p>
-
-              <div className="bg-white border-2 border-orange-100 rounded-3xl p-4 inline-block mb-4 shadow-sm">
-                <img
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=BEEFOOD-ORDER-Rp${totalBelanja}&color=ea580c`}
-                  alt="QRIS Barcode"
-                  className="w-48 h-48 mx-auto"
-                />
-              </div>
-
-              <div className="bg-orange-50/50 border border-orange-100/50 rounded-2xl p-3.5 mb-6">
-                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider block">Total Belanja</span>
-                <span className="text-xl font-black text-orange-600">
-                  Rp {totalBelanja.toLocaleString("id-ID")}
-                </span>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setShowCheckoutQrisModal(false)}
-                  className="flex-1 py-3 border border-gray-200 hover:border-gray-300 text-gray-500 font-black text-xs rounded-2xl transition-colors cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  onClick={handleConfirmCheckout}
-                  disabled={actionLoading}
-                  className="flex-1 py-3 bg-orange-500 hover:bg-orange-600 text-white font-black text-xs rounded-2xl shadow-lg shadow-orange-500/25 transition-all hover:scale-[1.02] cursor-pointer disabled:opacity-60"
-                >
-                  {actionLoading ? "Memproses..." : "Saya Sudah Bayar"}
-                </button>
-              </div>
             </motion.div>
           </>
         )}
