@@ -498,7 +498,7 @@ const TenantDashboard = () => {
                                   {o.status === "PENDING" && <Clock className="w-3.5 h-3.5 animate-spin" />}
                                   {o.status === "COOKING" && <ChefHat className="w-3.5 h-3.5" />}
                                   {o.status === "READY" && <Check className="w-3.5 h-3.5" />}
-                                  {o.status === "PENDING" ? "Menunggu Konfirmasi" : o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
+                                  {o.status === "PENDING" ? "Menunggu ACC" : o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
                                 </span>
                               </td>
                               <td className="p-5 text-right">
@@ -512,7 +512,7 @@ const TenantDashboard = () => {
                                         : "bg-green-500 hover:bg-green-600 text-white hover:shadow-green-500/20"
                                     }`}
                                   >
-                                    {o.status === "PENDING" ? "Mulai Masak" : "Set Siap Ambil"}
+                                    {o.status === "PENDING" ? "ACC Pesanan" : "Set Siap Ambil"}
                                   </button>
                                 ) : (
                                   <span className="text-xs text-gray-400 font-bold bg-gray-50 border border-gray-100 px-3 py-1.5 rounded-lg">
@@ -545,7 +545,7 @@ const TenantDashboard = () => {
                                   o.status === "COOKING" ? "bg-gradient-to-r from-blue-500 to-indigo-600" :
                                   "bg-gradient-to-r from-emerald-500 to-green-600"
                                 }`}>
-                                  {o.status === "PENDING" ? "Menunggu Konfirmasi" : o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
+                                  {o.status === "PENDING" ? "Menunggu ACC" : o.status === "COOKING" ? "Sedang Dimasak" : "Siap Diambil!"}
                                 </span>
                              </div>
                             
@@ -572,7 +572,7 @@ const TenantDashboard = () => {
                                   o.status === "PENDING" ? "bg-blue-500 text-white" : "bg-green-500 text-white"
                                 }`}
                               >
-                                {o.status === "PENDING" ? "Mulai Masak Sekarang" : "Tandai Siap Diambil"}
+                                {o.status === "PENDING" ? "ACC Pesanan" : "Tandai Siap Diambil"}
                               </button>
                             ) : (
                               <div className="w-full py-3 bg-gray-50 border border-gray-100 rounded-2xl text-center text-xs text-gray-400 font-bold">

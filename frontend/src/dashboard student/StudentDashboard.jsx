@@ -7,7 +7,7 @@ import axios from "axios";
 const API_URL = "http://localhost:5000/api";
 
 const getOrderStatusLabel = (status) => {
-  if (status === "PENDING") return "Menunggu";
+  if (status === "PENDING") return "Menunggu ACC Tenant";
   if (status === "COOKING") return "Dimasak";
   return "Siap diambil";
 };

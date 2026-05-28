@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+/* Flat design baseline */
+@layer base {
+  [class*="shadow"] {
+    box-shadow: none !important;
+  }
+
+  [class*="bg-gradient"] {
+    background-image: none !important;
+  }
+
+  [class*="rounded-3xl"] {
+    border-radius: 0.75rem !important;
+  }
+
+  [class*="rounded-2xl"] {
+    border-radius: 0.625rem !important;
+  }
+}
+
 @layer utilities {
   .scrollbar-hide::-webkit-scrollbar {
     display: none;

@@ -628,39 +628,8 @@ app.post('/api/orders', authenticateToken, async (req, res) => {
       });
     });
 
-    // Beritahu tenant secara real-time
+    // Beritahu tenant ada order baru (status awal tetap PENDING)
     req.io.emit('newOrder', result);
-    
-    // AUTO-UPDATE STATUS:
-    // - 3 detik: PENDING -> COOKING (menunggu konfirmasi)
-    // - 5 detik setelah itu: COOKING -> READY (durasi masak)
-    setTimeout(async () => {
-      try {
-        const cookingOrder = await prisma.order.update({
-          where: { id: result.id },
-          data: { status: 'COOKING' },
-          include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
-        });
-        req.io.emit('orderStatusUpdated', cookingOrder);
-        console.log(`Order ${result.id} status updated to COOKING`);
-
-        setTimeout(async () => {
-          try {
-            const readyOrder = await prisma.order.update({
-              where: { id: result.id },
-              data: { status: 'READY' },
-              include: { tenant: true, user: { select: { name: true, nim: true, phoneNumber: true } } }
-            });
-            req.io.emit('orderStatusUpdated', readyOrder);
-            console.log(`Order ${result.id} status updated to READY`);
-          } catch (e) {
-            console.error('Failed to update order status to READY:', e);
-          }
-        }, 5000);
-      } catch (e) {
-        console.error('Failed to update order status to COOKING:', e);
-      }
-    }, 3000);
 
     res.status(201).json({ message: "Pre-order berhasil ditempatkan", order: result });
   } catch (err) {
