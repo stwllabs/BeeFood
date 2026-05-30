@@ -1,21 +1,69 @@
 @import "tailwindcss";
 
-/* Flat design baseline */
+/* Flat design — konsisten di semua halaman */
 @layer base {
-  [class*="shadow"] {
+  body {
+    @apply bg-slate-100 text-slate-800 antialiased;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    @apply rounded-md border border-slate-300 bg-white shadow-none;
+  }
+
+  button {
+    @apply font-semibold transition-colors;
+  }
+
+  [class*="shadow"],
+  [class*="shadow-sm"],
+  [class*="shadow-md"],
+  [class*="shadow-lg"],
+  [class*="shadow-xl"],
+  [class*="shadow-2xl"] {
     box-shadow: none !important;
   }
 
-  [class*="bg-gradient"] {
+  [class*="bg-gradient"],
+  [class*="from-"],
+  [class*="to-"] {
     background-image: none !important;
   }
 
-  [class*="rounded-3xl"] {
-    border-radius: 0.75rem !important;
+  [class*="rounded-3xl"],
+  [class*="rounded-2xl"] {
+    border-radius: 0.5rem !important;
   }
 
-  [class*="rounded-2xl"] {
-    border-radius: 0.625rem !important;
+  [class*="backdrop-blur"] {
+    backdrop-filter: none !important;
+  }
+
+  [class*="animate-pulse"],
+  [class*="animate-ping"],
+  [class*="animate-bounce"] {
+    animation: none !important;
+  }
+}
+
+@layer components {
+  .flat-card {
+    @apply bg-white border border-slate-200 rounded-md;
+  }
+
+  .flat-btn-primary {
+    @apply bg-orange-500 hover:bg-orange-600 text-white border-orange-600 px-4 py-2 rounded-md;
+  }
+
+  .flat-btn-secondary {
+    @apply bg-white hover:bg-slate-50 text-slate-700 border-slate-300 px-4 py-2 rounded-md;
+  }
+
+  .flat-badge {
+    @apply text-[11px] font-semibold px-2 py-0.5 rounded border;
   }
 }
 

@@ -1,0 +1,44 @@
+#!/usr/bin/env php
+<?php
+
+declare(strict_types=1);
+
+$base = __DIR__;
+$schema = $base . '/database/schema.sql';
+$seed = $base . '/database/seed.sql';
+$dbPath = $base . '/database/beefood.sqlite';
+
+$command = $argv[1] ?? 'help';
+
+if ($command === 'migrate') {
+    if (is_file($dbPath)) {
+        unlink($dbPath);
+    }
+    $pdo = new PDO('sqlite:' . $dbPath);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec(file_get_contents($schema));
+    echo "Schema applied.\n";
+    exit(0);
+}
+
+if ($command === 'seed') {
+    $pdo = new PDO('sqlite:' . $dbPath);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec(file_get_contents($seed));
+    echo "Seed applied.\n";
+    exit(0);
+}
+
+if ($command === 'db:init') {
+    if (is_file($dbPath)) {
+        unlink($dbPath);
+    }
+    $pdo = new PDO('sqlite:' . $dbPath);
+    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $pdo->exec(file_get_contents($schema));
+    $pdo->exec(file_get_contents($seed));
+    echo "Database initialized from SQL scripts.\n";
+    exit(0);
+}
+
+echo "Usage: php artisan db:init | migrate | seed\n";

@@ -1,0 +1,27 @@
+# Local tooling (jangan di-commit)
+composer.phar
+cacert.pem
+php.ini
+
+# Python venv
+.venv/
+
+# SQLite runtime DB
+**/beefood.sqlite
+backend/prisma/dev.db
+
+# Node
+node_modules/
+frontend/dist/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Env secrets
+.env
+backend/.env
+backend-laravel/.env
+backend-laravel-full/.env
