@@ -3,8 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { UtensilsCrossed, Store, ArrowRight, Mail, Lock, User as UserIcon, Phone, FileText, MapPin, AlertCircle, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
-
-const API_URL = "http://localhost:5000/api";
+import { API_URL } from "../config";
 
 const Login = () => {
   const navigate = useNavigate();

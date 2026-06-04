@@ -4,8 +4,8 @@ import { Store, ShoppingBag, Grid, LogOut, Menu, X, Check, ChefHat, Clock, Star,
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import { compressImageFile } from "../utils/compressImage";
+import { API_URL } from "../config";
 
-const API_URL = "http://localhost:5000/api";
 
 const getApiErrorMessage = (err, fallback) =>
   err?.response?.data?.error || err?.message || fallback;

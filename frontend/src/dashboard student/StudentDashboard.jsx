@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { Search, Wallet, ChevronLeft, MapPin, Star, ShoppingBag, X, ChefHat, Clock, User, Phone, FileText, CheckCircle2, History, MessageSquare, LogOut, Upload, UserCheck } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
+import { API_URL } from "../config";
 
-const API_URL = "http://localhost:5000/api";
 
 const getOrderStatusLabel = (status) => {
   if (status === "PENDING") return "Menunggu ACC Tenant";

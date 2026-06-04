@@ -3,8 +3,8 @@ import { useNavigate } from "react-router-dom";
 import { Wallet, ChevronLeft, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
+import { API_URL } from "../config";
 
-const API_URL = "http://localhost:5000/api";
 
 const StudentBeePayPage = () => {
   const navigate = useNavigate();

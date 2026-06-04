@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
+import { SOCKET_URL } from './config';
 
-const socket = io('http://localhost:5000');
+const socket = io(SOCKET_URL);
 
 // Mock Data Awal Menu Tenant (Biar sinkron dengan dashboard mahasiswa)
 const initialMenus = [

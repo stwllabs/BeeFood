@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { ShoppingBag, ChevronLeft } from "lucide-react";
 import { motion } from "framer-motion";
 import axios from "axios";
+import { API_URL } from "../config";
 
-const API_URL = "http://localhost:5000/api";
 
 const StudentQrisCheckoutPage = () => {
   const navigate = useNavigate();
