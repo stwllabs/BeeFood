@@ -135,7 +135,7 @@ const seedDatabase = async () => {
     console.error("Gagal seeding database:", err);
   }
 };
-//seedDatabase();
+seedDatabase();
 
 // --- API ROUTES ---
 
