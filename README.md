@@ -36,16 +36,21 @@ Buka URL yang ditampilkan Vite (biasanya http://localhost:5173).
    - `DATABASE_URL` → reference dari PostgreSQL
    - `JWT_SECRET` → string acak
    - `NODE_ENV` → `production`
-5. **Settings → Networking → Generate Domain**
+5. **Settings → Networking → Generate Domain** pada service **backend** (bukan PostgreSQL)
 6. Salin URL publik backend (mis. `https://beefood-backend.up.railway.app`)
+
+> **Penting:** Jangan pakai URL PostgreSQL (`postgres-production-xxx.up.railway.app`) di frontend.
+> Itu alamat database, bukan API. Frontend butuh URL service **backend Node.js** yang terpisah.
+
+Cek backend aktif: buka `https://YOUR-BACKEND-URL/health` → harus tampil `{"ok":true,...}`
 
 ### Frontend → Vercel
 
 1. Buka [vercel.com](https://vercel.com) → **Add New Project** → import repo ini
 2. **Root Directory**: `frontend`
 3. Tambah env var:
-   - `VITE_SOCKET_URL` = URL Railway backend (tanpa `/api`)
-4. Deploy
+   - `VITE_SOCKET_URL` = URL Railway **backend** (tanpa `/api`)
+4. **Redeploy** setelah mengubah env var
 
 Aplikasi live di URL Vercel. API di URL Railway + `/api`.
 

@@ -18,6 +18,10 @@ const prisma = new PrismaClient();
 app.use(cors());
 app.use(express.json());
 
+app.get('/health', (_req, res) => {
+  res.json({ ok: true, service: 'beefood-backend' });
+});
+
 // Share socket.io instance ke express req context
 app.use((req, res, next) => {
   req.io = io;
@@ -792,4 +796,9 @@ app.get('/api/tenants/:tenantId/feedback', async (req, res) => {
 });
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => console.log(`Backend BeeFood running on port ${PORT}`));
+const HOST = '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+  console.log(`Backend BeeFood running on ${HOST}:${PORT}`);
+  console.log(`DATABASE_URL ${process.env.DATABASE_URL ? 'configured' : 'MISSING'}`);
+});
