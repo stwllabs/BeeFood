@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node server.js",
-    "start:prod": "prisma generate && prisma db push --accept-data-loss && node server.js",
+    "start:prod": "sh start.sh",
     "db:setup": "prisma generate && prisma migrate deploy",
     "dev": "powershell -ExecutionPolicy Bypass -File start.ps1",
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -13,9 +13,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "engines": {
-    "node": ">=20"
-  },
   "dependencies": {
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
@@ -23,10 +20,10 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
-    "prisma": "^6.19.3",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "prisma": "^6.19.3"
   }
 }

@@ -44,13 +44,6 @@ Buka URL yang ditampilkan Vite (biasanya http://localhost:5173).
 
 Cek backend aktif: buka `https://YOUR-BACKEND-URL/health` → harus tampil `{"ok":true,...}`
 
-### Troubleshooting deploy backend gagal
-
-1. **Root Directory** harus `backend` (bukan kosong / root repo)
-2. **Config path** di Railway: `/backend/railway.json`
-3. **Variables** wajib: `DATABASE_URL` (reference PostgreSQL), `JWT_SECRET`, `NODE_ENV=production`
-4. Jika build gagal, buka **Deployments → View Logs** dan cek baris error terakhir
-
 ### Frontend → Vercel
 
 1. Buka [vercel.com](https://vercel.com) → **Add New Project** → import repo ini
